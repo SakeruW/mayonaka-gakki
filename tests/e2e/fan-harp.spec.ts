@@ -48,13 +48,17 @@ test("強 spins up to the full note", async ({ page }) => {
 test("the bulb switch silences the pick", async ({ page }) => {
   await page.keyboard.down("1");
   await expect(note(page)).toHaveText("F3");
-  await page.getByRole("button", { name: "電球" }).click();
+  const power = page.getByRole("button", { name: "電球" });
+  await expect(power).toHaveAttribute("aria-pressed", "true");
+  await power.click();
+  await expect(power).toHaveAttribute("aria-pressed", "false");
   await expect(note(page)).toHaveText("--");
   await page.keyboard.up("1");
 });
 
 test("changing the disc rebuilds the rings (was a crash)", async ({ page }) => {
   const errors = collectErrors(page);
+  await page.getByRole("button", { name: "円盤を替える" }).click();
   await page.getByRole("button", { name: "Kira Killer" }).click();
   await expect(page.getByRole("textbox", { name: "穴の数（内側から）" })).toHaveValue("30, 36, 40, 45, 48, 53, 60, 64");
   await page.keyboard.down("1");
@@ -70,6 +74,7 @@ test("changing the disc rebuilds the rings (was a crash)", async ({ page }) => {
 });
 
 test("bad disc settings are marked, not applied", async ({ page }) => {
+  await page.getByRole("button", { name: "円盤を替える" }).click();
   const slots = page.getByRole("textbox", { name: "穴の数（内側から）" });
   await slots.fill("18, abc");
   await expect(slots).toHaveAttribute("aria-invalid", "true");
@@ -89,13 +94,25 @@ test("the dimmer turns, shows its ring, and resets on double-click", async ({ pa
   await expect(knob).toHaveAttribute("aria-valuenow", "0");
 });
 
-test("no visible text beyond the title, readouts, keys and inputs", async ({ page }) => {
+test("no visible text beyond readouts, keys and inputs", async ({ page }) => {
   const visible = await page.locator(".fan-harp").evaluate((root) => {
-    const skip = (el: Element | null) => !!el?.closest(".vfd, h1, .key");
+    const skip = (el: Element | null) => !!el?.closest(".vfd, .key");
     const out: string[] = [];
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     for (let n = walker.nextNode(); n; n = walker.nextNode()) if (n.textContent!.trim() && !skip(n.parentElement)) out.push(n.textContent!.trim());
     return out;
   });
   expect(visible).toEqual([]);
+});
+
+test("the disc tray opens, closes on a tap elsewhere, and its parts have no visible text", async ({ page }) => {
+  const btn = page.getByRole("button", { name: "円盤を替える" });
+  const tray = page.getByRole("region", { name: "円盤" });
+  await expect(tray).toBeHidden();
+  await btn.click();
+  await expect(btn).toHaveAttribute("aria-expanded", "true");
+  await expect(tray).toBeVisible();
+  expect((await tray.innerText()).trim()).toBe("");
+  await page.locator(".fan-harp .vfd").click();
+  await expect(tray).toBeHidden();
 });

@@ -2,11 +2,12 @@ import { useSyncExternalStore } from "react";
 
 // plain hash routes, so the same build also runs inside a claude.ai artifact
 export const ROUTES = ["fan-harp", "crt-drums", "open-reel"] as const;
-export type Route = (typeof ROUTES)[number] | "lobby";
+export type Route = (typeof ROUTES)[number];
+export const DEFAULT_ROUTE: Route = "fan-harp";
 
 export function parseRoute(hash: string): Route {
   const id = hash.replace(/^#\/?/, "");
-  return (ROUTES as readonly string[]).includes(id) ? (id as Route) : "lobby";
+  return (ROUTES as readonly string[]).includes(id) ? (id as Route) : DEFAULT_ROUTE;
 }
 
 function subscribe(cb: () => void) {
@@ -15,5 +16,5 @@ function subscribe(cb: () => void) {
 }
 
 export function useRoute(): Route {
-  return useSyncExternalStore(subscribe, () => parseRoute(window.location.hash), () => "lobby");
+  return useSyncExternalStore(subscribe, () => parseRoute(window.location.hash), () => DEFAULT_ROUTE);
 }

@@ -18,7 +18,7 @@ test("all six screens power on", async ({ page }) => {
 test("screens come back after leaving and re-entering", async ({ page }) => {
   const errors = collectErrors(page);
   for (let i = 0; i < 3; i++) {
-    await page.getByRole("link", { name: "ロビーへ戻る" }).click();
+    await page.getByRole("link", { name: "真夜中扇風琴" }).click();
     await page.getByRole("link", { name: "真夜中ブラウン管" }).click();
   }
   await page.waitForTimeout(1600);
@@ -79,7 +79,7 @@ test("60i/50i rocker switches the field rate", async ({ page }) => {
 
 test("no visible text beyond the title, readouts and the screen-text input", async ({ page }) => {
   const visible = await page.locator(".crt-drums").evaluate((root) => {
-    const skip = (el: Element | null) => !!el?.closest(".vfd, .osd, h1, .rocker, .key");
+    const skip = (el: Element | null) => !!el?.closest(".vfd, .osd, .rocker, .key");
     const out: string[] = [];
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     for (let n = walker.nextNode(); n; n = walker.nextNode()) if (n.textContent!.trim() && !skip(n.parentElement)) out.push(n.textContent!.trim());

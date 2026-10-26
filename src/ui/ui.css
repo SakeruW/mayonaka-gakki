@@ -50,5 +50,10 @@
                 border-bottom: 6px solid currentColor; }
 .step[data-d="-1"]::before { border-bottom: 0; border-top: 6px solid currentColor; }
 
-@media (max-width: 480px) { .vfd .note { font-size: 46px; min-height: 46px; } }
+@media (max-width: 480px) {
+  .vfd { padding: 8px 11px; gap: 4px; }
+  .vfd .top, .vfd .row { font-size: 12px; }
+  .vfd .note { font-size: 40px; min-height: 40px; }
+  .segs { height: 10px; gap: 2px; }
+}
 @media (prefers-reduced-motion: reduce) { .vfd .note.blink { animation: none; } }

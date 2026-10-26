@@ -3,6 +3,7 @@ import { STANDARDS, fieldHz, noteOf, stripeHz, type StandardId } from "../../eng
 import { Knob, driveRing, pitchRing } from "../../ui/Knob";
 import { Vfd, signed } from "../../ui/Vfd";
 import { Keys, Rocker, Stepper } from "../../ui/controls";
+import { useCompact } from "../../ui/useCompact";
 import { SETS, charFor, clampStripes, type Mode } from "./model";
 import { CrtRig } from "./rig";
 import "./crt-drums.css";
@@ -19,6 +20,7 @@ export default function CrtDrums({ title }: { title: string }) {
   const [drive, setDrive] = useState(45);
   const [stripes, setStripes] = useState<number[]>(() => SETS.map((s) => s.n));
   const [play, setPlay] = useState({ last: -1, sounding: false });
+  const compact = useCompact();
 
   const settings = { mode, text, std, bend, drive: drive / 100, stripes };
   const settingsRef = useRef(settings);
@@ -71,7 +73,7 @@ export default function CrtDrums({ title }: { title: string }) {
 
   return (
     <main className="instrument crt-drums" aria-label={title}>
-      <h1>{title}</h1>
+      <div className="rack-area">
       <section className="rack" ref={rackRef} aria-label="ブラウン管ドラム">
         {SETS.map((_, i) => (
           <div className="tv" key={i}>
@@ -83,6 +85,7 @@ export default function CrtDrums({ title }: { title: string }) {
           </div>
         ))}
       </section>
+      </div>
 
       <div className="deck">
         {vfd}
@@ -95,9 +98,9 @@ export default function CrtDrums({ title }: { title: string }) {
                  aria-label="画面の文字" hidden={mode !== "text"} onChange={(e) => setText(e.target.value)} />
           <div className="under">
             <Knob className="vhold" label="音程" value={bend} min={-100} max={100} step={2} rest={0} onChange={setBend}
-                  size={58} ring={pitchRing} ringFrom={0.5} />
+                  size={compact ? 46 : 58} ring={pitchRing} ringFrom={0.5} />
             <Knob className="drive" label="歪み" value={drive} min={0} max={100} step={1} rest={45} onChange={setDrive}
-                  size={44} ring={driveRing}
+                  size={compact ? 36 : 44} ring={driveRing}
                   style={{ boxShadow: `0 3px 0 rgba(0,0,0,0.45), inset 0 -3px 6px rgba(0,0,0,0.3), 0 0 ${Math.round(drive / 5)}px rgba(242,193,78,${(drive / 100 * 0.55).toFixed(2)})` }} />
             <Rocker label="フィールド周波数" on={std === "pal"} onClick={() => setStd((s) => (s === "ntsc" ? "pal" : "ntsc"))}>{sd.label}</Rocker>
           </div>

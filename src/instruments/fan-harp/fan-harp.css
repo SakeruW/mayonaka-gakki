@@ -1,46 +1,62 @@
-/* the fan face is the hero; its mint plastic base below; the disc parts in a tray under that */
-.fan-harp { --bulb: #ffb44a; --key-off: #efece3; --key-low: #a8d3ef; --key-mid: #b2e4bf; --key-high: #f4a8ba;
-            display: grid; gap: 18px; }
-.fan-harp .fan { display: grid; justify-items: center; }
-.fan-harp .stage { width: 100%; max-width: min(600px, max(74vh, 280px)); aspect-ratio: 1; display: block; touch-action: none; cursor: grab; }
+/* the fan face is the hero and takes whatever height the mint base leaves; it all fits one screen */
+.fan-harp { --bulb: #ffb44a; --key-off: #efece3; --key-low: #a8d3ef; --key-mid: #b2e4bf; --key-high: #f4a8ba; }
+.fan-harp .fan { flex: 1 1 0; min-height: 200px; container-type: size; display: grid; place-items: center; }
+.fan-harp .stage { width: min(100cqw, 100cqh, 620px); height: min(100cqw, 100cqh, 620px); display: block; touch-action: none; cursor: grab; }
 .fan-harp .stage.down { cursor: grabbing; }
 
-.fan-harp .base { width: 100%; background: linear-gradient(180deg, var(--plastic) 0%, var(--plastic-2) 100%); color: var(--plastic-ink);
-  border-radius: 26px 26px 18px 18px; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px;
+.fan-harp .base { position: relative; flex: none; background: linear-gradient(180deg, var(--plastic) 0%, var(--plastic-2) 100%); color: var(--plastic-ink);
+  border-radius: 26px 26px 18px 18px; padding: 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px;
   box-shadow: inset 0 2px 0 rgba(255,255,255,0.6), inset 0 -6px 0 rgba(29,56,50,0.18), 0 18px 40px rgba(0,0,0,0.45); }
-@media (max-width: 620px) { .fan-harp .base { grid-template-columns: minmax(0, 1fr); } }
 .fan-harp .vfd { border-radius: 10px; }
 
-.fan-harp .ctrl { display: grid; gap: 12px; align-content: center; justify-items: start; }
-.fan-harp .key { width: 52px; height: 64px; border-radius: 6px 6px 9px 9px; font-size: 21px; --key-ink: var(--plastic-ink); --key-on-ink: var(--plastic-ink);
+.fan-harp .ctrl { display: grid; gap: 10px; align-content: center; justify-items: start; }
+.fan-harp .key { width: 52px; height: 60px; border-radius: 6px 6px 9px 9px; font-size: 21px; --key-ink: var(--plastic-ink); --key-on-ink: var(--plastic-ink);
   box-shadow: inset 0 -7px 0 rgba(0,0,0,0.16), 0 3px 0 rgba(29,56,50,0.35); }
 .fan-harp .key.k0 { --key-bg: var(--key-off); --key-on-bg: var(--key-off); }
 .fan-harp .key.k1 { --key-bg: var(--key-low); --key-on-bg: var(--key-low); }
 .fan-harp .key.k2 { --key-bg: var(--key-mid); --key-on-bg: var(--key-mid); }
 .fan-harp .key.k3 { --key-bg: var(--key-high); --key-on-bg: var(--key-high); }
 .fan-harp .key[aria-pressed="true"] { transform: translateY(3px); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.2); filter: saturate(1.15) brightness(0.96); }
-.fan-harp .under { display: flex; gap: 18px; align-items: center; }
+.fan-harp .under { display: flex; gap: 14px; align-items: center; }
 .fan-harp .dimmer { --knob-face: radial-gradient(circle at 35% 30%, #fbfdfc, #c7d9d0 60%, #9fbbb0);
   --knob-shadow: 0 3px 0 rgba(29,56,50,0.35), inset 0 -3px 6px rgba(0,0,0,0.12); --knob-mark: var(--plastic-ink);
   --ring: #e0861c; --ring-dim: rgba(29,56,50,0.22); }
-.fan-harp .bulb { width: 58px; --rocker-bg: #2b3d38; --rocker-cap: var(--key-off); --rocker-on: var(--bulb); }
-.fan-harp .lamp { width: 12px; height: 12px; border-radius: 50%; background: #8d8a80; box-shadow: inset 0 -2px 0 rgba(0,0,0,0.2); }
-.fan-harp .bulb[aria-pressed="true"] .lamp { background: #fff6d6; box-shadow: 0 0 8px 3px rgba(255,214,140,0.9); }
+.fan-harp .switches { display: flex; gap: 10px; align-items: center; }
+/* the bulb's I/O rocker: a black legacy power switch; the pressed side sits low, the I glows warm while the bulb is lit */
+.fan-harp .power { width: 54px; height: 32px; padding: 3px; border-radius: 6px; background: #121716;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.7), 0 1px 0 rgba(255,255,255,0.5); }
+.fan-harp .power span { grid-template-columns: 1fr 1fr; border-radius: 4px; transform: none;
+  background: linear-gradient(90deg, #4a504e 0 50%, #1b1f1e 50% 100%);
+  box-shadow: inset -1px 0 0 rgba(255,255,255,0.08), inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -2px 0 rgba(0,0,0,0.4); }
+.fan-harp .power[aria-pressed="true"] span { transform: none; background: linear-gradient(90deg, #1b1f1e 0 50%, #4a504e 50% 100%); }
+.fan-harp .power i { justify-self: center; display: block; }
+.fan-harp .power .mark-on { width: 2.5px; height: 11px; border-radius: 1px; background: #d9ddd9; }
+.fan-harp .power .mark-off { width: 10px; height: 10px; border-radius: 50%; border: 2.5px solid #d9ddd9; }
+.fan-harp .power[aria-pressed="true"] .mark-on { background: #ffd28a; box-shadow: 0 0 6px 1px rgba(255,180,74,0.9); }
+.fan-harp .power[aria-pressed="true"] .mark-off { border-color: #7d837f; }
+.fan-harp .power[aria-pressed="false"] .mark-on { background: #7d837f; }
+.fan-harp .tray-btn { width: 40px; height: 40px; padding: 2px; border: none; border-radius: 50%; cursor: pointer; background: #2b3d38; display: grid;
+  box-shadow: 0 2px 0 rgba(29,56,50,0.35); }
+.fan-harp .tray-btn[aria-expanded="true"] { box-shadow: 0 0 0 2px var(--plastic-ink); }
+.fan-harp .tray-btn svg { width: 100%; height: 100%; }
 
-/* disc parts */
-.fan-harp .parts { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; padding: 12px 14px; border-radius: 14px; background: var(--room-2);
-  box-shadow: inset 0 0 0 1px #22302d; }
+/* drawn discs: dark plate, amber holes */
+.fan-harp svg .plate { fill: #141b1a; stroke: #b9c9c2; stroke-width: 1.4; }
+.fan-harp svg .holes { fill: none; stroke: #ffc46a; }
+.fan-harp svg .hub { fill: var(--plastic); }
+
+/* the disc tray pops up over the bottom of the fan */
+.fan-harp .parts { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px;
+  padding: 12px; border-radius: 14px; background: var(--room-2); box-shadow: inset 0 0 0 1px #2c3a37, 0 12px 30px rgba(0,0,0,0.55); }
+.fan-harp .parts[hidden] { display: none; }
 .fan-harp .discs { display: flex; gap: 8px; }
-.fan-harp .disc { width: 52px; height: 52px; padding: 3px; border: none; border-radius: 50%; cursor: pointer; background: transparent; display: grid;
+.fan-harp .disc { width: 50px; height: 50px; padding: 3px; border: none; border-radius: 50%; cursor: pointer; background: transparent; display: grid;
   box-shadow: 0 0 0 2px #2c3a37; transition: box-shadow 120ms; }
 .fan-harp .disc[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--plastic), 0 0 12px rgba(255,180,74,0.35); }
 .fan-harp .disc svg { width: 100%; height: 100%; }
-.fan-harp .disc .plate { fill: #141b1a; stroke: #b9c9c2; stroke-width: 1.4; }
-.fan-harp .disc .holes { fill: none; stroke: #ffc46a; }
 .fan-harp .disc[aria-pressed="false"] .holes { stroke: #8a6a3a; }
-.fan-harp .disc .hub { fill: var(--plastic); }
 .fan-harp .parts input { background: var(--vfd-bg); color: var(--vfd); border: 1px solid #2c3a37; border-radius: 8px; padding: 8px 10px; font-family: var(--f-vfd);
-  font-size: 15px; text-shadow: 0 0 6px rgba(116,245,207,0.45); min-width: 0; }
+  font-size: 16px; text-shadow: 0 0 6px rgba(116,245,207,0.45); min-width: 0; }
 .fan-harp .parts input[aria-invalid="true"] { border-color: var(--pick); box-shadow: 0 0 0 2px rgba(255,79,154,0.35); color: var(--pick); }
 .fan-harp .slots { flex: 1 1 14rem; }
 .fan-harp .rpm { width: 6.5rem; flex: none; }
@@ -53,11 +69,17 @@
   border-radius: 1px; background: var(--plastic); transform: rotate(45deg); }
 .fan-harp .hubclear::after { transform: rotate(-45deg); }
 
+@media (max-width: 680px) { .fan-harp .base { grid-template-columns: minmax(0, 1fr); } }
+
+/* phones: speed keys, dimmer and switches share one row under the VFD */
 @media (max-width: 480px) {
-  .fan-harp { gap: 14px; }
-  .fan-harp .base { padding: 12px; gap: 12px; border-radius: 20px 20px 14px 14px; }
-  .fan-harp .ctrl { justify-items: stretch; }
-  .fan-harp .keys { justify-content: space-between; }
-  .fan-harp .key { flex: 1; width: auto; height: 60px; }
-  .fan-harp .under { justify-content: space-around; }
+  .fan-harp .base { padding: 10px; gap: 8px; border-radius: 20px 20px 14px 14px; }
+  .fan-harp .ctrl { display: flex; align-items: center; gap: 6px; }
+  .fan-harp .keys { flex: 1; gap: 4px; }
+  .fan-harp .key { flex: 1; width: auto; min-width: 0; height: 50px; font-size: 18px; }
+  .fan-harp .under { gap: 0; }
+  .fan-harp .switches { flex-direction: column; gap: 6px; }
+  .fan-harp .power { width: 48px; height: 28px; }
+  .fan-harp .tray-btn { width: 32px; height: 32px; }
+  .fan-harp .slots { flex-basis: 100%; }
 }

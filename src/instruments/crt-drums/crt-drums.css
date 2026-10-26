@@ -1,14 +1,14 @@
-/* identical black professional monitors on two shelves, a charcoal video deck below */
+/* identical black professional monitors on two shelves, a charcoal video deck below; it all fits one screen */
 .crt-drums { --cab: #222527; --cab-2: #121415; --cab-ink: #c9d2d0; --rca: #e8b52a;
-             --deck: #2a302f; --deck-2: #1b201f; --deck-ink: #cfdcd6;
-             display: grid; gap: 18px; }
+             --deck: #2a302f; --deck-2: #1b201f; --deck-ink: #cfdcd6; }
 
-.crt-drums .rack { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 12px; padding: 14px 12px 18px; border-radius: 6px;
+/* the rack takes whatever height the deck leaves, and narrows itself until both shelves fit:
+   rack height ≈ 1.5 × set width + 111px, so width = 2 × height − 174px for three sets a shelf */
+.crt-drums .rack-area { flex: 1 1 0; min-height: 180px; container-type: size; display: grid; place-items: center; }
+.crt-drums .rack { width: min(100cqw, 200cqh - 176px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 12px;
+  padding: 14px 12px 18px; border-radius: 6px;
   background: linear-gradient(180deg, transparent calc(50% - 4px), #27302e calc(50% - 4px), #27302e calc(50% + 3px), transparent calc(50% + 3px)),
               linear-gradient(180deg, transparent calc(100% - 7px), #27302e calc(100% - 7px)); }
-@media (max-width: 600px) {
-  .crt-drums .rack { grid-template-columns: repeat(2, minmax(0, 1fr)); background: linear-gradient(180deg, transparent calc(100% - 7px), #27302e calc(100% - 7px)); }
-}
 
 .crt-drums .tv { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 9px 9px 8px; border-radius: 10px;
   background: linear-gradient(180deg, var(--cab) 0%, var(--cab-2) 100%); color: var(--cab-ink);
@@ -22,11 +22,11 @@
 .crt-drums .screen::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
   background: radial-gradient(120% 90% at 28% 18%, rgba(255,255,255,0.10), rgba(255,255,255,0) 42%); }
 .crt-drums .tv.lit .screen { box-shadow: inset 0 0 0 3px rgba(0,0,0,0.65), 0 0 0 3px rgba(0,0,0,0.25), 0 0 26px rgba(220,239,255,0.28); }
-.crt-drums .osd { position: absolute; top: 7%; right: 9%; z-index: 1; font-family: var(--f-vfd); font-size: clamp(14px, 3.4vw, 22px); line-height: 1; color: #6dff8f;
+.crt-drums .osd { position: absolute; top: 7%; right: 9%; z-index: 1; font-family: var(--f-vfd); font-size: clamp(13px, 3.4vw, 22px); line-height: 1; color: #6dff8f;
   text-shadow: 0 0 6px rgba(109,255,143,0.7), 2px 2px 0 #000; pointer-events: none; opacity: 0; transition: opacity 200ms; }
 .crt-drums .osd.show { opacity: 1; transition: none; }
 
-.crt-drums .panel { display: flex; align-items: center; gap: 5px; min-width: 0; --step-ink: var(--cab-ink); }
+.crt-drums .panel { display: flex; align-items: center; gap: 5px; min-width: 0; height: 22px; --step-ink: var(--cab-ink); }
 .crt-drums .jacks { flex: none; margin-left: auto; width: 39px; height: 12px;
   background: radial-gradient(circle, #050606 0 2.4px, #4a5053 2.8px 3.8px, transparent 4.2px) 0 50% / 13px 12px repeat-x; }
 .crt-drums .rca { width: 9px; height: 14px; flex: none; border-radius: 3px 3px 2px 2px; background: linear-gradient(90deg, #b8860f, var(--rca) 45%, #b8860f);
@@ -34,27 +34,34 @@
 .crt-drums .led { flex: none; width: 7px; height: 7px; border-radius: 50%; background: #3a1426; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4); }
 .crt-drums .tv.lit .led { background: var(--pick); box-shadow: 0 0 8px var(--pick); }
 
-.crt-drums .deck { background: linear-gradient(180deg, var(--deck) 0%, var(--deck-2) 100%); color: var(--deck-ink); border-radius: 10px; padding: 16px;
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px;
+.crt-drums .deck { flex: none; background: linear-gradient(180deg, var(--deck) 0%, var(--deck-2) 100%); color: var(--deck-ink); border-radius: 10px; padding: 14px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -4px 0 rgba(0,0,0,0.3), 0 18px 40px rgba(0,0,0,0.45); }
-@media (max-width: 680px) { .crt-drums .deck { grid-template-columns: minmax(0, 1fr); } }
-.crt-drums .ctrl { display: grid; gap: 14px; align-content: start; justify-items: start; min-width: 0; --key-ink: var(--deck-ink); }
+.crt-drums .ctrl { display: grid; gap: 10px; align-content: center; justify-items: start; min-width: 0; --key-ink: var(--deck-ink); }
 .crt-drums .key .bars { width: 26px; height: 22px; background: repeating-linear-gradient(180deg, currentColor 0 4px, transparent 4px 7px); border-radius: 1px; }
-.crt-drums .scrtext { background: var(--vfd-bg); color: var(--vfd); border: 1px solid #33403d; border-radius: 6px; padding: 7px 10px; font-family: var(--f-vfd);
+.crt-drums .scrtext { background: var(--vfd-bg); color: var(--vfd); border: 1px solid #33403d; border-radius: 6px; padding: 6px 10px; font-family: var(--f-vfd);
   font-size: 18px; width: 100%; max-width: 13rem; text-shadow: 0 0 6px rgba(116,245,207,0.55); }
-.crt-drums .under { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.crt-drums .under { display: flex; gap: 14px; align-items: center; }
 .crt-drums .vhold { --ring: var(--vfd); }
 .crt-drums .drive { --ring: var(--amber); --knob-mark: var(--amber); }
 
+/* tablets and narrow windows: the deck stacks */
+@media (max-width: 680px) { .crt-drums .deck { grid-template-columns: minmax(0, 1fr); } }
+
+/* phones: still three sets a shelf; the deck's keys, knobs and switch share one row under the VFD */
 @media (max-width: 480px) {
-  .crt-drums { gap: 14px; }
-  .crt-drums .rack { padding: 10px 6px 16px; gap: 12px 8px; }
-  .crt-drums .tv { padding: 7px 7px 6px; gap: 6px; }
-  .crt-drums .step { width: 26px; }
+  .crt-drums .rack { width: min(100cqw, 200cqh - 172px); padding: 10px 4px 16px; gap: 12px 8px; }
+  .crt-drums .tv { padding: 6px 6px 6px; gap: 6px; border-radius: 8px; }
+  .crt-drums .panel { gap: 3px; height: 20px; }
+  .crt-drums .step { width: 22px; height: 20px; }
   .crt-drums .jacks { display: none; }
-  .crt-drums .panel { justify-content: space-between; }
-  .crt-drums .deck { padding: 12px; gap: 12px; }
-  .crt-drums .ctrl { justify-items: stretch; }
-  .crt-drums .key { flex: 1; width: auto; }
-  .crt-drums .under { justify-content: space-around; }
+  .crt-drums .rca { margin-left: auto; }
+  .crt-drums .deck { padding: 10px; gap: 8px; }
+  .crt-drums .ctrl { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
+  .crt-drums .keys { flex: none; }
+  .crt-drums .key { width: 46px; height: 46px; font-size: 20px; }
+  .crt-drums .key .bars { width: 22px; height: 19px; }
+  .crt-drums .under { gap: 0; }
+  .crt-drums .rocker { width: 54px; height: 32px; }
+  .crt-drums .scrtext { order: 9; max-width: none; flex: 1 1 100%; font-size: 16px; }
 }
