@@ -1,0 +1,101 @@
+import { expect, test } from "@playwright/test";
+import { brightness, collectErrors } from "./helpers";
+
+test.beforeEach(async ({ page }) => {
+  await page.goto("/#fan-harp");
+  await expect(page.locator(".fan-harp .vfd .row")).toContainText("rpm");   // the rig is running
+});
+
+const note = (page: import("@playwright/test").Page) => page.locator(".fan-harp .vfd .note");
+const top = (page: import("@playwright/test").Page) => page.locator(".fan-harp .vfd .top");
+
+test("the fan draws and spins without errors", async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.waitForTimeout(500);
+  expect(await brightness(page, page.locator(".fan-harp .stage"))).toBeGreaterThan(0.1);
+  await expect(page.locator(".fan-harp .vfd .row")).toContainText("rpm");
+  expect(errors).toEqual([]);
+});
+
+test("a ring key sounds that ring", async ({ page }) => {
+  await expect(note(page)).toHaveText("--");
+  await page.keyboard.down("1");
+  await expect(top(page)).toHaveText("1輪目　18穴");
+  await expect(note(page)).toHaveText("F3");              // 18 holes at 中
+  await expect(note(page)).not.toHaveClass(/rest/);
+  await page.keyboard.up("1");
+  await expect(note(page)).toHaveText("--");
+  await expect(note(page)).toHaveClass(/rest/);
+});
+
+test("dragging the pick onto the disc plays the ring under it", async ({ page }) => {
+  const b = (await page.locator(".fan-harp .stage").boundingBox())!;
+  const R = b.width / 2 * 0.8;
+  await page.mouse.move(b.x + b.width / 2 + 0.6 * R, b.y + b.height / 2);
+  await page.mouse.down();
+  await expect(top(page)).toHaveText("4輪目　30穴");
+  await page.mouse.up();
+  await expect(note(page)).toHaveText("--");
+});
+
+test("強 spins up to the full note", async ({ page }) => {
+  await page.getByRole("button", { name: "強" }).click();
+  await page.keyboard.down("1");
+  await expect(note(page)).toHaveText("G3", { timeout: 10_000 });   // 18 × 654 / 60 = 196.2 Hz
+  await page.keyboard.up("1");
+});
+
+test("the bulb switch silences the pick", async ({ page }) => {
+  await page.keyboard.down("1");
+  await expect(note(page)).toHaveText("F3");
+  await page.getByRole("button", { name: "電球" }).click();
+  await expect(note(page)).toHaveText("--");
+  await page.keyboard.up("1");
+});
+
+test("changing the disc rebuilds the rings (was a crash)", async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.getByRole("button", { name: "Kira Killer" }).click();
+  await expect(page.getByRole("textbox", { name: "穴の数（内側から）" })).toHaveValue("30, 36, 40, 45, 48, 53, 60, 64");
+  await page.keyboard.down("1");
+  await expect(top(page)).toHaveText("1輪目　30穴");
+  await page.keyboard.up("1");
+  const slots = page.getByRole("textbox", { name: "穴の数（内側から）" });
+  await slots.fill("20, 25");
+  await slots.press("Enter");
+  await page.keyboard.down("2");
+  await expect(top(page)).toHaveText("2輪目　25穴");
+  await page.keyboard.up("2");
+  expect(errors).toEqual([]);
+});
+
+test("bad disc settings are marked, not applied", async ({ page }) => {
+  const slots = page.getByRole("textbox", { name: "穴の数（内側から）" });
+  await slots.fill("18, abc");
+  await expect(slots).toHaveAttribute("aria-invalid", "true");
+  await slots.press("Enter");
+  await page.keyboard.down("1");
+  await expect(top(page)).toHaveText("1輪目　18穴");
+  await page.keyboard.up("1");
+});
+
+test("the dimmer turns, shows its ring, and resets on double-click", async ({ page }) => {
+  const knob = page.getByRole("slider", { name: "ディマー" });
+  await knob.focus();
+  await knob.press("ArrowRight");
+  await expect(knob).toHaveAttribute("aria-valuenow", "10");
+  await expect(page.locator(".fan-harp .dimmer .lit")).toHaveAttribute("d", /^M/);
+  await knob.dblclick();
+  await expect(knob).toHaveAttribute("aria-valuenow", "0");
+});
+
+test("no visible text beyond the title, readouts, keys and inputs", async ({ page }) => {
+  const visible = await page.locator(".fan-harp").evaluate((root) => {
+    const skip = (el: Element | null) => !!el?.closest(".vfd, h1, .key");
+    const out: string[] = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) if (n.textContent!.trim() && !skip(n.parentElement)) out.push(n.textContent!.trim());
+    return out;
+  });
+  expect(visible).toEqual([]);
+});

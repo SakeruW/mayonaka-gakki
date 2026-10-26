@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { brightness, collectErrors } from "./helpers";
 
-test.beforeEach(async ({ page }) => { await page.goto("/#crt-drums"); });
+test.beforeEach(async ({ page }) => {
+  await page.goto("/#crt-drums");
+  await expect(page.locator(".crt-drums .vfd .top")).toContainText("Hz");
+});
 
 test("all six screens power on", async ({ page }) => {
   const errors = collectErrors(page);
