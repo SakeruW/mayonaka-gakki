@@ -10,21 +10,25 @@ export function ensureAudio(): AudioContext | null {
   if (!ctx) {
     const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AC) return null;
+    // these are instruments: on iPhones, play like a music app does, even with the ringer on silent (Safari 16.4+)
+    const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+    if (session) { try { session.type = "playback"; } catch { /* older Safari: silent mode mutes the page */ } }
     ctx = new AC();
     bindUnlock();
   }
-  if (ctx.state === "suspended") void ctx.resume();
+  if (ctx.state !== "running") void ctx.resume();
   return ctx;
 }
 
 export function audioContext(): AudioContext | null { return ctx; }
 
-// phones only unlock audio inside certain gestures; try on each of them
+// Phones only unlock audio inside certain gestures, and for a finger that is the lift (pointerup, touchend), not the
+// touch. Try on each of them; this also wakes a context iOS "interrupted" when the app went to the background.
 function bindUnlock() {
   if (unlockBound) return;
   unlockBound = true;
-  const resume = () => { if (ctx && ctx.state === "suspended") void ctx.resume(); };
-  for (const n of ["touchend", "click", "keydown"]) window.addEventListener(n, resume, { passive: true });
+  const resume = () => { if (ctx && ctx.state !== "running") void ctx.resume(); };
+  for (const n of ["pointerup", "touchend", "click", "keydown"]) window.addEventListener(n, resume, { passive: true });
 }
 
 /** tanh soft clip, 0 = nearly clean, 1 = heavily driven. */
