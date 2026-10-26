@@ -37,6 +37,9 @@ export function handSpeed(omega: number, packR: number) { return omega * packR /
 /** and the tape turns a reel at this many rad/s */
 export function reelOmega(s: number, packR: number) { return s * V0 / packR; }
 
+/** a playback head hears the change in the tape's field, so its output fades away as the tape comes to a stop */
+export function headOutput(s: number) { return Math.min(1, Math.abs(s) / 0.04); }
+
 /** tape loses its top end as it slows: the head gap only resolves short wavelengths at speed */
 export function toneHz(s: number) { return Math.max(180, Math.min(16000, 16000 * Math.pow(Math.abs(s), 0.9))); }
 
@@ -116,7 +119,7 @@ export function demoLoop(sr = TAPE_RATE): Float32Array {
  * forward past the heads; swinging it down lets the tape back in, and it runs backwards. Like any lever, a big swing of
  * the handle moves the tape a little, which makes it easy to control. Angles are below the horizontal, in radians.
  */
-export const LEVER = { hingeX: 6.85, hingeY: 9.1, length: 2.95, tieAt: 1.35, rest: 0.87, min: 0.3, max: 1.42, gain: 5 } as const;
+export const LEVER = { hingeX: 6.85, hingeY: 9.1, length: 2.95, tieAt: 1.35, rest: 0.87, min: 0.3, max: 1.42, gain: 3.2 } as const;
 /** where the tape leaves the box */
 export const SLOT = { x: DECK.box.x + DECK.box.w, y: 9.95 } as const;
 

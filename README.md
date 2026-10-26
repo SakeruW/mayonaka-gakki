@@ -7,7 +7,7 @@ Each one makes its sound the way the real hardware does.
 |---|---|
 | 真夜中扇風琴 — electric fan harp | Light from a bulb flickers through rings of holes in a spinning disc; a pick-shaped light sensor turns the flicker into sound. Pitch = holes × rpm / 60. |
 | 真夜中ブラウン管 — CRT TV drums | Your hand picks up each TV's picture line by line. More stripes on screen means a higher note. |
-| 真夜中オープンリール — open-reel tape | Set up the Open Reel Ensemble way: an upright deck with one reel; the tape runs down past the heads and out of the box to a lever. Swing the lever to drag the tape across the head and back; tap or pull the tape, or record onto it from your microphone. |
+| 真夜中オープンリール — open-reel tape | Set up the Open Reel Ensemble way: an upright deck with one reel; the tape runs down past the heads and out of the box to a lever. Swing the lever to drag the tape across the head and back, or record onto it from your microphone. |
 
 The interface is in Japanese.
 

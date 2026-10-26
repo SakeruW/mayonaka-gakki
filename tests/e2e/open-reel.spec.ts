@@ -70,46 +70,10 @@ test("holding ↑ → or ↓ ← swings the lever from the keyboard", async ({ p
   await page.keyboard.up("ArrowLeft");
 });
 
-test("turning the reel by hand still scratches the tape", async ({ page }) => {
-  const d = await deck(page), r = 1.7;
-  const at = (a: number) => d.at(3.4 + r * Math.cos(a), 3.05 + r * Math.sin(a));
-  await page.mouse.move(...at(0));
-  await page.mouse.down();
-  let seen = 0;
-  for (let i = 1; i <= 24; i++) { await page.mouse.move(...at(i * 0.12)); if (i % 6 === 0) seen = Math.max(seen, await speedValue(page)); }
-  expect(seen).toBeGreaterThan(0.2);                           // clockwise feeds the tape down to the heads
-  await page.mouse.up();
-});
-
-test("tapping the tape knocks a burst past the head, then it settles", async ({ page }) => {
-  const errors = collectErrors(page);
-  await page.mouse.click(...(await deck(page)).at(6.08, 6.0));
-  await expect.poll(() => speedValue(page), { timeout: 500 }).toBeGreaterThan(0.3);
-  await expect(speed(page)).toHaveText("0.00×", { timeout: 2000 });
-  expect(errors).toEqual([]);
-});
-
-test("pulling the tape by hand drags it past the heads both ways", async ({ page }) => {
-  const d = await deck(page);
-  let [x, y] = d.at(6.08, 5.95);
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.waitForTimeout(450);
-  let fwd = 0;
-  for (let i = 0; i < 12; i++) { y += 0.2 * d.U; await page.mouse.move(x + 0.4 * d.U, y); fwd = Math.max(fwd, await speedValue(page)); }
-  expect(fwd).toBeGreaterThan(0.2);                             // pulled down: forward
-  let back = 0;
-  for (let i = 0; i < 12; i++) { y -= 0.2 * d.U; await page.mouse.move(x + 0.4 * d.U, y); back = Math.min(back, await speedValue(page)); }
-  expect(back).toBeLessThan(-0.2);
-  await page.mouse.up();
-});
-
 test("the tape still plays where AudioWorklet isn't allowed (plain-http pages)", async ({ page }) => {
   await page.addInitScript(() => { Object.defineProperty(BaseAudioContext.prototype, "audioWorklet", { get: () => undefined }); });
   const errors = collectErrors(page);
   await page.goto("/#open-reel");
-  await page.mouse.click(...(await deck(page)).at(6.08, 6.0));   // wake the audio
-  await page.waitForTimeout(300);
   await page.keyboard.down("ArrowRight");
   await expect.poll(() => speedValue(page)).toBeGreaterThan(0.3);
   await page.keyboard.up("ArrowRight");
@@ -125,4 +89,12 @@ test("no visible text beyond the readouts", async ({ page }) => {
     return out;
   });
   expect(visible).toEqual([]);
+});
+
+test("once the lever is let go the tape falls silent: the VU needle comes back to rest", async ({ page }) => {
+  const needle = page.locator(".open-reel .needle");
+  const deg = async () => Number((await needle.evaluate((e) => e.style.transform)).match(/-?[\d.]+/)![0]);
+  await page.keyboard.down("ArrowDown"); await page.waitForTimeout(700); await page.keyboard.up("ArrowDown");
+  await page.keyboard.down("ArrowUp"); await page.waitForTimeout(450); await page.keyboard.up("ArrowUp");
+  await expect.poll(deg, { timeout: 4000 }).toBeLessThan(-46);   // -48 is silence
 });

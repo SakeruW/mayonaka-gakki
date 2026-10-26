@@ -7,8 +7,8 @@ import { onFrame } from "../../engine/loop";
 import { createTapeHead, type TapeHead } from "../../engine/tape";
 import workletUrl from "./tape-worklet.ts?worker&url";
 import {
-  DECK, HUB_R, LEVER, SLOT, SUPPLY_R, TAPE_RATE, counter, demoLoop, handSpeed, hissLevel, leverAngle, leverPoint, leverSpeed, reelOmega,
-  tapeOut, tapeStep, tapeUnitsPerSecond, toneHz,
+  DECK, HUB_R, LEVER, SLOT, SUPPLY_R, TAPE_RATE, counter, demoLoop, headOutput, hissLevel, leverAngle, leverPoint, leverSpeed, reelOmega,
+  tapeOut, tapeStep, toneHz,
 } from "./model";
 
 export interface DeckSettings { rec: boolean }
@@ -16,11 +16,8 @@ export interface Readout { s: number; pos: number; counter: string; recording: b
 export type MicState = "off" | "on" | "denied";
 
 type Pt = { x: number; y: number };
-/** a hand on something that moves the tape: the lever, the reel, or the tape itself */
-interface Hand { id: number; at: number; v: number }
-interface LeverHand extends Hand { offset: number; lastOut: number }
-interface ReelHand extends Hand { last: number; offset: number }
-interface TapeHand extends Hand { last: number; f: Pt }
+/** a hand on the lever: the only thing that moves the tape */
+interface LeverHand { id: number; at: number; v: number; offset: number; lastOut: number }
 
 const ASPECT = DECK.width / DECK.height;
 const REPORT_EVERY = 0.08;
@@ -33,9 +30,6 @@ export class TapeRig {
   private phi: number = LEVER.rest;    // the lever's swing below the horizontal
   private keyDir = 0;                  // ↑ ↓ (or ← →) swing the lever from the keyboard
   private lever: LeverHand | null = null;
-  private reelHand: ReelHand | null = null;
-  private tapeHand: TapeHand | null = null;
-  private dip = { y: 0, amount: 0 };   // where a finger last knocked the tape
   private revs = 0;
   private ctx: CanvasRenderingContext2D;
   private plate: HTMLCanvasElement | null = null;
@@ -130,18 +124,13 @@ export class TapeRig {
     this.head?.setRecording(false);
   }
 
-  /** a finger knocks the tape against the head: a jolt of tape past it and a moment of hard contact */
-  tap(y?: number) {
-    this.wake();
-    this.dip = { y: y ?? 7, amount: 1 };
-    if (!this.lever && !this.reelHand && !this.tapeHand) this.speed += 1.8;
-    this.head?.knock(2.4, this.contact());
-  }
+  /**
+   * What the playback head passes on. It only hears the tape while the tape moves past it, so a stopped tape is silent;
+   * and the monitor is off while recording, so the speakers can't feed back into the mic.
+   */
+  private contact() { return this.recording ? 0 : headOutput(this.speed); }
 
-  /** the tape presses on the heads, except while recording: the monitor is off so the speakers can't feed back */
-  private contact() { return this.recording ? 0 : 1; }
-
-  // ---------- hands on the lever, the reel and the tape ----------
+  // ---------- a hand on the lever ----------
   private bindInput() {
     const cv = this.cv;
     // pointer positions in deck units
@@ -151,57 +140,27 @@ export class TapeRig {
       const t = Math.max(0, Math.min(1.08, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
       return t > 0.15 && Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy)) < 0.75;
     };
-    const R = DECK.reel, TX = DECK.tapeX, G1 = DECK.guideTop, G2 = DECK.guideLow;
     const down = (e: PointerEvent) => {
       e.preventDefault();
       this.wake();
-      const p = local(e), now = performance.now();
-      const capture = () => { try { cv.setPointerCapture(e.pointerId); } catch { /* fine without capture */ } };
-      if (onLever(p)) {
-        capture();
-        this.lever = { id: e.pointerId, at: now, v: 0, offset: this.phi - leverAngle(p.x, p.y), lastOut: tapeOut(this.phi) };
-        cv.classList.add("down");
-      } else if (Math.hypot(p.x - R.x, p.y - R.y) < R.r) {
-        capture();
-        const a = Math.atan2(p.y - R.y, p.x - R.x);
-        this.reelHand = { id: e.pointerId, at: now, v: 0, last: a, offset: this.reelAngle - a };
-        cv.classList.add("down");
-      } else if (!this.tapeHand && Math.abs(p.x - TX) < 0.8 && p.y > G1.y && p.y < G2.y) {
-        // touching the tape knocks it onto the head; keep hold and drag to pull it past the heads
-        this.tap(p.y);
-        capture();
-        this.tapeHand = { id: e.pointerId, at: now, v: 0, last: p.y, f: p };
-      }
+      const p = local(e);
+      if (!onLever(p)) return;
+      try { cv.setPointerCapture(e.pointerId); } catch { /* fine without capture */ }
+      this.lever = { id: e.pointerId, at: performance.now(), v: 0, offset: this.phi - leverAngle(p.x, p.y), lastOut: tapeOut(this.phi) };
+      cv.classList.add("down");
     };
     const move = (e: PointerEvent) => {
-      const now = performance.now(), p = local(e);
-      const blend = (h: Hand, d: number) => { const dt = Math.max(0.004, (now - h.at) / 1000); h.v = h.v * 0.4 + (d / dt) * 0.6; h.at = now; };
       const lv = this.lever;
-      if (lv && lv.id === e.pointerId) {
-        this.phi = Math.max(LEVER.min, Math.min(LEVER.max, leverAngle(p.x, p.y) + lv.offset));
-        const out = tapeOut(this.phi);
-        blend(lv, out - lv.lastOut); lv.lastOut = out;
-        return;
-      }
-      const th = this.tapeHand;
-      if (th && th.id === e.pointerId) { blend(th, p.y - th.last); th.last = p.y; th.f = p; return; }
-      const rh = this.reelHand;
-      if (rh && rh.id === e.pointerId) {
-        const a = Math.atan2(p.y - R.y, p.x - R.x);
-        let d = a - rh.last;
-        if (d > Math.PI) d -= 2 * Math.PI; else if (d < -Math.PI) d += 2 * Math.PI;
-        blend(rh, d); rh.last = a;
-        this.reelAngle = a + rh.offset;   // the reel stays under the finger
-      }
+      if (!lv || lv.id !== e.pointerId) return;
+      const now = performance.now(), p = local(e);
+      this.phi = Math.max(LEVER.min, Math.min(LEVER.max, leverAngle(p.x, p.y) + lv.offset));
+      const out = tapeOut(this.phi), dt = Math.max(0.004, (now - lv.at) / 1000);
+      lv.v = lv.v * 0.4 + ((out - lv.lastOut) / dt) * 0.6;
+      lv.lastOut = out; lv.at = now;
     };
-    const up = (e: PointerEvent) => {
-      if (this.lever?.id === e.pointerId) this.lever = null;
-      if (this.reelHand?.id === e.pointerId) this.reelHand = null;
-      if (this.tapeHand?.id === e.pointerId) this.tapeHand = null;
-      if (!this.lever && !this.reelHand) cv.classList.remove("down");
-    };
+    const up = (e: PointerEvent) => { if (this.lever?.id === e.pointerId) { this.lever = null; cv.classList.remove("down"); } };
     const menu = (e: Event) => e.preventDefault();
-    const release = () => { this.lever = this.reelHand = this.tapeHand = null; this.keyDir = 0; cv.classList.remove("down"); };
+    const release = () => { this.lever = null; this.keyDir = 0; cv.classList.remove("down"); };
     const hidden = () => { if (document.hidden) release(); };
     cv.addEventListener("pointerdown", down);
     cv.addEventListener("pointermove", move);
@@ -226,31 +185,22 @@ export class TapeRig {
       const before = tapeOut(this.phi);
       this.phi = Math.max(LEVER.min, Math.min(LEVER.max, this.phi - this.keyDir * 2.2 * dt));
       this.speed = leverSpeed((tapeOut(this.phi) - before) / dt);
+    } else if (this.lever) {
+      // the tape follows the lever, a little gently so a wobbling finger doesn't jerk it; a lever held still holds it still
+      const lv = this.lever, v = now - lv.at > STALE_MS ? 0 : lv.v;
+      this.speed += (leverSpeed(v) - this.speed) * (1 - Math.exp(-dt / 0.06));
     } else {
-      // the hand that moved last drives the tape; a hand held still holds the tape still
-      const hands: Hand[] = [this.lever, this.reelHand, this.tapeHand].filter((h) => h !== null);
-      hands.sort((a, b) => b.at - a.at);
-      const h = hands[0];
-      if (h) {
-        const v = now - h.at > STALE_MS ? 0 : h.v;
-        const want = h === this.lever ? leverSpeed(v)
-                   : h === this.reelHand ? handSpeed(v, SUPPLY_R)           // turning the reel clockwise feeds tape down to the heads
-                   : v / tapeUnitsPerSecond();                              // the tape pulled downward is forward
-        this.speed += (want - this.speed) * (1 - Math.exp(-dt / 0.025));
-      } else {
-        this.speed = tapeStep(this.speed, dt);
-      }
+      this.speed = tapeStep(this.speed, dt);
     }
-    if (!this.reelHand) this.reelAngle += reelOmega(this.speed, SUPPLY_R) * dt;
+    this.reelAngle += reelOmega(this.speed, SUPPLY_R) * dt;
     this.revs += reelOmega(this.speed, SUPPLY_R) * dt / (2 * Math.PI);
-    this.dip.amount *= Math.exp(-dt / 0.08);
 
     this.recording = this.s.rec && !!this.mic && this.speed > 0.05;
     const head = this.head;
     if (this.ac && head) {
       const t = this.ac.currentTime;
       head.setRate(this.speed);
-      if (this.dip.amount < 0.3) head.setContact(this.contact());
+      head.setContact(this.contact());
       head.setFlutter(false);
       head.setRecording(this.recording);
       this.tone?.frequency.setTargetAtTime(toneHz(this.speed), t, 0.02);
@@ -343,17 +293,9 @@ export class TapeRig {
 
     // the tape: off the reel, round the top guide, down past the heads, round the low guide, out of the slot to the lever
     const a = rightTangent({ x: R.x, y: R.y }, SUPPLY_R * R.r, { x: G1.x, y: G1.y }, G1.r);
-    const f = this.tapeHand?.f, dip = this.dip.amount * 0.3;
     c.strokeStyle = "#5a3a22"; c.lineWidth = 0.13 * U; c.lineCap = "round"; c.lineJoin = "round";
     c.beginPath(); c.moveTo(a.p1.x * U, a.p1.y * U); c.lineTo(a.p2.x * U, a.p2.y * U);
     c.arc(G1.x * U, G1.y * U, G1.r * U, Math.atan2(a.p2.y - G1.y, a.p2.x - G1.x), 0);
-    if (f && Math.abs(f.x - TX) > 0.03) {
-      // pinched and pulled: the tape runs straight from the top guide to the finger
-      c.lineTo((TX + Math.max(-1.1, Math.min(1.1, f.x - TX))) * U, Math.max(G1.y + 0.6, Math.min(DECK.heads[0] - 0.4, f.y)) * U);
-    } else if (dip > 0.05) {
-      const dy = Math.min(DECK.heads[0] - 0.5, Math.max(G1.y + 0.4, this.dip.y));
-      c.lineTo(TX * U, (dy - 0.5) * U); c.quadraticCurveTo((TX + dip * 2) * U, dy * U, TX * U, (dy + 0.5) * U);
-    }
     c.lineTo(TX * U, G2.y * U);
     c.arc(G2.x * U, G2.y * U, G2.r * U, 0, Math.atan2(SLOT.y - G2.y, SLOT.x - G2.x) * 0.5);
     c.lineTo(SLOT.x * U, SLOT.y * U);

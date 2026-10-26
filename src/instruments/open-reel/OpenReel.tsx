@@ -6,7 +6,7 @@ import "./open-reel.css";
 
 // A 1970s open-reel deck at midnight, set up the Open Reel Ensemble way: the box stands upright with one reel on top,
 // and the tape runs down past the heads and out of the box to a lever hinged on its side. Swing the lever to drag the
-// tape across the head and back; tap the tape to knock it against the head; record onto it with REC.
+// tape across the head and back; record onto it with REC.
 export default function OpenReel({ title }: { title: string }) {
   const deckRef = useRef<HTMLCanvasElement>(null);
   const needleRef = useRef<HTMLElement>(null);
@@ -24,7 +24,7 @@ export default function OpenReel({ title }: { title: string }) {
   }, []);
   useEffect(() => { rigRef.current?.update({ rec }); }, [rec]);
 
-  // keyboard: hold ↑ or → to swing the lever up (tape forward), ↓ or ← to swing it down (back), R record, T tap the tape
+  // keyboard: hold ↑ or → to swing the lever up (tape forward), ↓ or ← to swing it down (back), R record
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
@@ -34,7 +34,6 @@ export default function OpenReel({ title }: { title: string }) {
       if (dir) { rig?.rock(dir); e.preventDefault(); return; }
       if (e.repeat) return;
       if (e.key.toLowerCase() === "r") { rig?.wake(); setRec((r) => !r); }
-      else if (e.key.toLowerCase() === "t") rig?.tap();
     };
     const up = (e: KeyboardEvent) => { if (e.key.startsWith("Arrow")) rigRef.current?.rock(0); };
     window.addEventListener("keydown", down);
