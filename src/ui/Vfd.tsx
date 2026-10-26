@@ -12,12 +12,10 @@ import type { ReactNode } from "react";
 export interface VfdProps {
   topLeft?: ReactNode;
   topRight?: ReactNode;
-  /** a note (big name, small octave) or any short readout such as "--", "12:00" or "0:12.4" */
+  /** a note (big name, small octave) or any short readout such as "--" or "0:12.4" */
   note: { name: string; oct: number } | string;
   /** dim the big readout: nothing is sounding */
   rest?: boolean;
-  /** blink like an unset clock */
-  blink?: boolean;
   /** tuning needle, ±50 cents; null leaves it dark */
   cents?: number | null;
   /** a bar from the centre instead of the needle, −1..1 */
@@ -27,7 +25,7 @@ export interface VfdProps {
 
 const SEGS = 21, CENTRE = 10;
 
-export function Vfd({ topLeft, topRight, note, rest, blink, cents = null, bar = null, bottom = [] }: VfdProps) {
+export function Vfd({ topLeft, topRight, note, rest, cents = null, bar = null, bottom = [] }: VfdProps) {
   let lit: (i: number) => string;
   if (bar !== null) {
     const reach = Math.round(Math.max(-1, Math.min(1, bar)) * CENTRE);
@@ -40,7 +38,7 @@ export function Vfd({ topLeft, topRight, note, rest, blink, cents = null, bar = 
   return (
     <div className="vfd" aria-live="off">
       <div className="top"><span>{topLeft}</span><span>{topRight}</span></div>
-      <div className={"note" + (rest ? " rest" : "") + (blink ? " blink" : "")}>
+      <div className={"note" + (rest ? " rest" : "")}>
         {typeof note === "string" ? note : <>{note.name}<small>{note.oct}</small></>}
       </div>
       <div className="segs" aria-hidden="true">

@@ -2,13 +2,24 @@
 .crt-drums { --cab: #222527; --cab-2: #121415; --cab-ink: #c9d2d0; --rca: #e8b52a;
              --deck: #2a302f; --deck-2: #1b201f; --deck-ink: #cfdcd6; }
 
-/* the rack takes whatever height the deck leaves, and narrows itself until both shelves fit:
-   rack height ≈ 1.5 × set width + 111px, so width = 2 × height − 174px for three sets a shelf */
+/* the rack: a Showa teak shelf unit, two uprights and two thick shelf boards over a dark back panel. It takes whatever
+   height the deck leaves and narrows until both shelves fit: height = 1.5 x set width + 129px, so width = 2 x height - 198px. */
 .crt-drums .rack-area { flex: 1 1 0; min-height: 180px; container-type: size; display: grid; place-items: center; }
-.crt-drums .rack { width: min(100cqw, 200cqh - 176px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 12px;
-  padding: 14px 12px 18px; border-radius: 6px;
-  background: linear-gradient(180deg, transparent calc(50% - 4px), #27302e calc(50% - 4px), #27302e calc(50% + 3px), transparent calc(50% + 3px)),
-              linear-gradient(180deg, transparent calc(100% - 7px), #27302e calc(100% - 7px)); }
+.crt-drums { --teak: #8a5a34; --teak-hi: #c08a57; --teak-lo: #4f301a; }
+.crt-drums .rack { position: relative; width: min(100cqw, 200cqh - 198px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 12px; padding: 12px 18px 0; border-radius: 6px 6px 3px 3px;
+  background:
+    linear-gradient(90deg, var(--teak-lo), var(--teak) 30%, var(--teak-hi) 55%, var(--teak) 80%, var(--teak-lo)) left / 10px 100% no-repeat,
+    linear-gradient(90deg, var(--teak-lo), var(--teak) 30%, var(--teak-hi) 55%, var(--teak) 80%, var(--teak-lo)) right / 10px 100% no-repeat,
+    linear-gradient(90deg, var(--teak-hi), var(--teak) 30%, var(--teak-lo)) top / 100% 6px no-repeat,
+    linear-gradient(180deg, #221a14, #140f0c);
+  box-shadow: 0 20px 34px rgba(0,0,0,0.55); }
+.crt-drums .tv { margin-bottom: 6px; }
+/* a shelf board: lit front edge, the board's face, a shadow underneath */
+.crt-drums .shelf { grid-column: 1 / -1; height: 14px; margin: 0 -18px 12px; border-radius: 2px; position: relative; z-index: 1;
+  background: linear-gradient(180deg, var(--teak-hi) 0 2px, var(--teak) 2px 70%, var(--teak-lo));
+  box-shadow: 0 7px 10px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(0,0,0,0.35); }
+.crt-drums .shelf:last-child { margin-bottom: 0; }
 
 .crt-drums .tv { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 9px 9px 8px; border-radius: 10px;
   background: linear-gradient(180deg, var(--cab) 0%, var(--cab-2) 100%); color: var(--cab-ink);
@@ -48,7 +59,10 @@
 
 /* phones: still three sets a shelf; the deck's keys, knobs and switch share one row under the VFD */
 @media (max-width: 480px) {
-  .crt-drums .rack { width: min(100cqw, 200cqh - 172px); padding: 10px 4px 16px; gap: 12px 8px; }
+  .crt-drums .rack { width: min(100cqw, 200cqh - 176px); padding: 10px 12px 0; column-gap: 8px;
+    background-size: 7px 100%, 7px 100%, 100% 4px, auto; }
+  .crt-drums .tv { margin-bottom: 5px; }
+  .crt-drums .shelf { height: 10px; margin: 0 -12px 10px; }
   .crt-drums .tv { padding: 6px 6px 6px; gap: 6px; border-radius: 8px; }
   .crt-drums .panel { gap: 3px; height: 20px; }
   .crt-drums .step { width: 22px; height: 20px; }

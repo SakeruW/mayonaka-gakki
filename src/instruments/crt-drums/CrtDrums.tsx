@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { STANDARDS, noteOf, stripeHz, type StandardId } from "../../engine/pattern-wave";
 import { Knob, driveRing, pitchRing } from "../../ui/Knob";
 import { Vfd } from "../../ui/Vfd";
@@ -56,9 +56,9 @@ export default function CrtDrums({ title }: { title: string }) {
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
   }, [step]);
 
-  // VFD: blinks 12:00 like an unset deck until the first hit
+  // VFD: a dim -- until the first hit, as on the other instruments
   const sd = STANDARDS[std];
-  let vfd = <Vfd note="12:00" blink />;
+  let vfd = <Vfd note="--" rest />;
   if (play.last >= 0) {
     const n = stripes[play.last], f = stripeHz(n, sd, bend), nn = noteOf(f);
     vfd = <Vfd topLeft={`${play.last + 1}台目`} topRight={mode === "stripes" ? `縞${n}本` : `「${SCREEN_TEXT}」`}
@@ -70,13 +70,16 @@ export default function CrtDrums({ title }: { title: string }) {
       <div className="rack-area">
       <section className="rack" ref={rackRef} aria-label="ブラウン管ドラム">
         {SETS.map((_, i) => (
-          <div className="tv" key={i}>
+          <Fragment key={i}>
+          <div className="tv">
             <div className="screen" data-i={i} role="button" aria-label={`${i + 1}台目`}><canvas /><span className="osd" /></div>
             <div className="panel">
               <Stepper label={`${i + 1}台目 縞`} onStep={(d) => step(i, d)} />
               <i className="jacks" /><i className="rca" /><i className="led" />
             </div>
           </div>
+          {i % 3 === 2 && <i className="shelf" aria-hidden="true" />}
+          </Fragment>
         ))}
       </section>
       </div>

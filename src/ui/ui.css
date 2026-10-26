@@ -8,8 +8,6 @@
 .vfd .note { font-size: 54px; line-height: 1; display: flex; align-items: baseline; gap: 8px; min-height: 54px; transition: opacity 160ms; }
 .vfd .note small { font-size: 22px; }
 .vfd .note.rest { opacity: 0.45; }
-.vfd .note.blink { animation: vfd-blink 1s steps(1, end) infinite; }
-@keyframes vfd-blink { 50% { opacity: 0.12; } }
 .segs { display: grid; grid-template-columns: repeat(21, 1fr); gap: 3px; height: 12px; }
 .segs i { background: rgba(116,245,207,0.12); border-radius: 1px; }
 .segs i.c { background: rgba(116,245,207,0.35); }
@@ -66,4 +64,3 @@
   .vfd .note { font-size: 40px; min-height: 40px; }
   .segs { height: 10px; gap: 2px; }
 }
-@media (prefers-reduced-motion: reduce) { .vfd .note.blink { animation: none; } }

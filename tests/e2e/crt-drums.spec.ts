@@ -3,7 +3,7 @@ import { brightness, collectErrors } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/#crt-drums");
-  await expect(page.locator(".crt-drums .vfd .note")).toHaveText("12:00");
+  await expect(page.locator(".crt-drums .vfd .note")).toHaveText("--");
 });
 
 test("all six screens power on", async ({ page }) => {
@@ -28,7 +28,7 @@ test("screens come back after leaving and re-entering", async ({ page }) => {
 
 test("touching a set sounds it and the VFD follows", async ({ page }) => {
   const vfd = page.locator(".crt-drums .vfd");
-  await expect(vfd.locator(".note")).toHaveText("12:00");
+  await expect(vfd.locator(".note")).toHaveText("--");
   const tv = page.locator(".crt-drums .tv").first();
   const box = (await tv.locator(".screen").boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
