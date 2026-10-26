@@ -250,23 +250,67 @@ export class FanRig {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
+  /**
+   * The Light-Pick as the real one is built: a guitar-pick-shaped body held in the fingers, a photodiode window just behind
+   * the tip (that window is the point that hears the disc), and a cable out of the wide end to the amp.
+   * It is held from the lower right, so the tip points up-left.
+   */
   private drawPick(R: number, on: boolean) {
-    const { ctx, dpr, pick: p } = this;
-    const X = p.x * R, Y = p.y * R, s = Math.max(11 * dpr, Math.min(17 * dpr, R * 0.085)), lift = on ? 0 : s * 0.35;
-    ctx.save(); ctx.translate(X - lift, Y - lift);
-    if (!on) { ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.beginPath(); ctx.ellipse(lift * 1.6, lift * 1.6, s * 0.9, s * 0.8, 0, 0, Math.PI * 2); ctx.fill(); }
-    ctx.rotate(-0.5);
-    ctx.beginPath(); ctx.moveTo(0, -s * 1.05);
-    ctx.bezierCurveTo(s * 0.95, -s * 1.05, s * 1.05, -s * 0.2, 0, s * 1.1);
-    ctx.bezierCurveTo(-s * 1.05, -s * 0.2, -s * 0.95, -s * 1.05, 0, -s * 1.05); ctx.closePath();
-    ctx.shadowColor = "#ff4f9a"; ctx.shadowBlur = on ? 18 * dpr : 0;
-    ctx.fillStyle = on ? "#ff4f9a" : "rgba(255,79,154,0.75)"; ctx.fill(); ctx.shadowBlur = 0;
+    const { ctx, dpr, pick: p, S } = this;
+    const s = Math.max(10 * dpr, Math.min(16 * dpr, R * 0.08));   // half the pick's width
+    const L = 2.3 * s, eye = 0.42 * s;                              // length tip→wide end; tip→window
+    const lift = on ? 0 : s * 0.4, a = -Math.PI / 4;               // lifted off the disc when not touching; body toward lower right
+    const X = p.x * R - lift, Y = p.y * R - lift;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const world = (x: number, y: number) => [X + x * ca - y * sa, Y + x * sa + y * ca] as const;   // pick-local → disc space
+
+    // the cable leaves the wide end and runs off toward the amp, lower right
+    const [ex, ey] = world(0, L - eye + s * 0.25), [kx, ky] = world(0, L - eye + s * 1.6);
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#16161b"; ctx.lineWidth = 3.2 * dpr;
+    ctx.beginPath(); ctx.moveTo(ex, ey); ctx.bezierCurveTo(kx, ky, S * 0.28, S * 0.36, S * 0.46, S * 0.52); ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,0.10)"; ctx.lineWidth = 1 * dpr;
+    ctx.beginPath(); ctx.moveTo(ex, ey); ctx.bezierCurveTo(kx, ky, S * 0.28, S * 0.36, S * 0.46, S * 0.52); ctx.stroke();
+
+    ctx.save(); ctx.translate(X, Y); ctx.rotate(a);
+    // shadow on the disc while it hovers
+    if (!on) {
+      ctx.save(); ctx.translate(0, lift * 1.4); ctx.fillStyle = "rgba(0,0,0,0.4)";
+      this.pickOutline(s, L, eye); ctx.fill(); ctx.restore();
+    }
+    // strain relief where the cable enters
+    ctx.fillStyle = "#1d1d23"; ctx.beginPath(); ctx.roundRect(-s * 0.18, L - eye - s * 0.05, s * 0.36, s * 0.42, s * 0.08); ctx.fill();
+    // body: neon pink plastic with a thin darker edge for its thickness
+    this.pickOutline(s, L, eye);
+    const body = ctx.createLinearGradient(-s, -eye, s, L - eye);
+    body.addColorStop(0, "#ff7cb6"); body.addColorStop(0.55, "#ff4f9a"); body.addColorStop(1, "#d9367c");
+    ctx.shadowColor = "#ff4f9a"; ctx.shadowBlur = on ? 16 * dpr : 0;
+    ctx.fillStyle = body; ctx.fill(); ctx.shadowBlur = 0;
+    ctx.lineWidth = 1.4 * dpr; ctx.strokeStyle = "rgba(120,10,60,0.75)"; ctx.stroke();
+    // grip: a few raised ridges across the wide end
+    ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = 1 * dpr;
+    for (let k = 0; k < 3; k++) { const y = L - eye - s * (0.55 + k * 0.28), w = s * (0.55 - k * 0.07); ctx.beginPath(); ctx.moveTo(-w, y); ctx.lineTo(w, y); ctx.stroke(); }
+    // the photodiode window: dark glass in a metal ring, glowing with whatever light reaches it
+    const lum = on && Math.hypot(p.x, p.y) < 1 ? light(p, this.s.bulb) : 0, rw = s * 0.26;
+    ctx.fillStyle = "#c9cfd0"; ctx.beginPath(); ctx.arc(0, 0, rw + 1.4 * dpr, 0, Math.PI * 2); ctx.fill();
+    const glass = ctx.createRadialGradient(-rw * 0.3, -rw * 0.3, 0, 0, 0, rw);
+    glass.addColorStop(0, lum ? `rgba(255,244,214,${0.6 + 0.4 * lum})` : "#3a3550");
+    glass.addColorStop(1, lum ? `rgba(255,170,80,${0.4 + 0.5 * lum})` : "#0c0b14");
+    ctx.fillStyle = glass; ctx.beginPath(); ctx.arc(0, 0, rw, 0, Math.PI * 2); ctx.fill();
+    if (lum) { ctx.shadowColor = "rgba(255,200,120,0.9)"; ctx.shadowBlur = 10 * dpr * lum; ctx.fill(); ctx.shadowBlur = 0; }
+    ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.beginPath(); ctx.arc(-rw * 0.35, -rw * 0.35, rw * 0.22, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
-    // the photocell window glows with whatever light reaches it
-    const lum = on ? light(p, this.s.bulb) : 0;
-    ctx.fillStyle = on && lum > 0 && Math.hypot(p.x, p.y) < 1 ? "rgba(255,236,190," + (0.5 + 0.5 * lum) + ")" : "#3a1426";
-    ctx.beginPath(); ctx.arc(X - lift, Y - lift, 4.5 * dpr, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.8)"; ctx.lineWidth = 1.2 * dpr; ctx.stroke();
+  }
+
+  /** a standard guitar-pick outline, tip up, centred on the photodiode window */
+  private pickOutline(s: number, L: number, eye: number) {
+    const c = this.ctx, t = -eye, b = L - eye;
+    c.beginPath();
+    c.moveTo(0, t);
+    c.bezierCurveTo(s * 0.32, t, s * 0.98, t + L * 0.5, s * 0.97, t + L * 0.78);
+    c.bezierCurveTo(s * 0.95, b + s * 0.12, -s * 0.95, b + s * 0.12, -s * 0.97, t + L * 0.78);
+    c.bezierCurveTo(-s * 0.98, t + L * 0.5, -s * 0.32, t, 0, t);
+    c.closePath();
   }
 
   dispose() {
