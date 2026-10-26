@@ -4,6 +4,7 @@
 
 let ctx: AudioContext | null = null;
 let unlockBound = false;
+let keepAwake: HTMLAudioElement | null = null;
 
 /** Call from inside a user gesture. Creates the context the first time and resumes it after that. */
 export function ensureAudio(): AudioContext | null {
@@ -12,22 +13,45 @@ export function ensureAudio(): AudioContext | null {
     if (!AC) return null;
     // these are instruments: on iPhones, play like a music app does, even with the ringer on silent (Safari 16.4+)
     const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
-    if (session) { try { session.type = "playback"; } catch { /* older Safari: silent mode mutes the page */ } }
+    if (session) { try { session.type = "playback"; } catch { /* fall back to the silent audio element below */ } }
     ctx = new AC();
     bindUnlock();
   }
   if (ctx.state !== "running") void ctx.resume();
+  playThroughSilentMode();
   return ctx;
 }
 
 export function audioContext(): AudioContext | null { return ctx; }
+
+/**
+ * iPhones mute Web Audio when the ringer switch is on silent, but not media elements. A silent looping audio element
+ * moves the whole page into media playback, which also carries the Web Audio. It covers iPhones older than Safari 16.4
+ * and in-app browsers where the audio session can't be asked for. It has to start inside a gesture; it pauses while
+ * the page is hidden.
+ */
+function playThroughSilentMode() {
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+  if (!ios) return;
+  if (!keepAwake) {
+    const rate = 8000, n = rate / 2, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);   // half a second of silence, as a WAV
+    const str = (o: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    str(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); str(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, n * 2, true);
+    keepAwake = new Audio(URL.createObjectURL(new Blob([buf], { type: "audio/wav" })));
+    keepAwake.loop = true;
+    keepAwake.setAttribute("playsinline", "");
+    document.addEventListener("visibilitychange", () => { if (document.hidden) keepAwake?.pause(); });
+  }
+  if (keepAwake.paused && !document.hidden) keepAwake.play().catch(() => { /* not inside a gesture yet: the next touch tries again */ });
+}
 
 // Phones only unlock audio inside certain gestures, and for a finger that is the lift (pointerup, touchend), not the
 // touch. Try on each of them; this also wakes a context iOS "interrupted" when the app went to the background.
 function bindUnlock() {
   if (unlockBound) return;
   unlockBound = true;
-  const resume = () => { if (ctx && ctx.state !== "running") void ctx.resume(); };
+  const resume = () => { if (ctx && ctx.state !== "running") void ctx.resume(); playThroughSilentMode(); };
   for (const n of ["pointerup", "touchend", "click", "keydown"]) window.addEventListener(n, resume, { passive: true });
 }
 
