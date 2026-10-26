@@ -1,0 +1,10 @@
+// Cloudflare deploys the built site (dist/) as static assets. Cloudflare's own build runs `npm run build`, then
+// `npx wrangler deploy` (main) or `npx wrangler versions upload` (other branches, as preview links).
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "mayonaka-gakki",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}
