@@ -1,3 +1,4 @@
+# Tests every push and pull request. Deploying is Cloudflare Pages' job: it builds from the repo itself.
 name: CI
 
 on:
@@ -16,40 +17,10 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npm test
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
-      - uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: dist
-          retention-days: 7
-
-  deploy:
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-    steps:
-      - name: Check Cloudflare secrets
-        id: cf
-        run: |
-          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then echo "ready=true" >> "$GITHUB_OUTPUT";
-          else echo "::notice::Cloudflare secrets not set; skipping deploy."; fi
-      - uses: actions/download-artifact@v8
-        if: steps.cf.outputs.ready == 'true'
-        with:
-          name: dist
-          path: dist
-      - uses: cloudflare/wrangler-action@v3
-        if: steps.cf.outputs.ready == 'true'
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=mayonaka-gakki --branch=main
