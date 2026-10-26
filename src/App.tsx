@@ -10,8 +10,7 @@ const TITLES: Record<Route, string> = {
   "open-reel": "真夜中オープンリール",
 };
 
-/** instruments in the nav; the open reel joins once it plays */
-const NAV: Route[] = ["fan-harp", "crt-drums"];
+const NAV: Route[] = ["fan-harp", "crt-drums", "open-reel"];
 
 export default function App() {
   const route = useRoute();
