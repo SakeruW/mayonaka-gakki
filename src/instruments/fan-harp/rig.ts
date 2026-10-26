@@ -3,7 +3,7 @@
 
 import { ensureAudio } from "../../engine/audio";
 import { onFrame } from "../../engine/loop";
-import { BULB, DISC, DUTY, amplitudes, keyPick, light, ringWave, ringsOf, targetRpm, tune, type Pos, type Reading, type Ring } from "./model";
+import { BULB, DISC, DUTY, amplitudes, motorStep, keyPick, light, ringWave, ringsOf, targetRpm, tune, type Pos, type Reading, type Ring } from "./model";
 
 export interface FanSettings { slots: number[]; base: number; speed: number; bend: number; bulb: boolean }
 export interface TunerState { rpm: number; reading: Reading | null }
@@ -35,7 +35,8 @@ export class FanRig {
   constructor(private cv: HTMLCanvasElement, settings: FanSettings, private onTuner: (t: TunerState) => void) {
     this.s = { ...settings, slots: settings.slots.slice() };
     this.rings = ringsOf(this.s.slots);
-    this.rpm = targetRpm(this.s.base, this.s.speed, 0);
+    // the fan starts from a standstill and winds up to the set speed; reduced motion skips the wind-up
+    this.rpm = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? targetRpm(this.s.base, this.s.speed, this.s.bend) : 0;
     this.ctx = cv.getContext("2d")!;
     this.bindInput();
     this.cleanup.push(onFrame(this.frame));
@@ -139,9 +140,7 @@ export class FanRig {
 
   // ---------- loop ----------
   private frame = (dt: number) => {
-    const tgt = targetRpm(this.s.base, this.s.speed, this.s.bend), tau = tgt > this.rpm ? 1.1 : 2.4;   // spins up faster than it coasts down
-    this.rpm += (tgt - this.rpm) * (1 - Math.exp(-dt / tau));
-    if (this.rpm < 0.3 && tgt === 0) this.rpm = 0;
+    this.rpm = motorStep(this.rpm, targetRpm(this.s.base, this.s.speed, this.s.bend), dt);
     this.angle = (this.angle + this.rpm / 60 * Math.PI * 2 * dt) % (Math.PI * 2);
     const amps = amplitudes(this.rings, this.contacts(), this.s.bulb);
     if (this.ac && this.voices.length) {

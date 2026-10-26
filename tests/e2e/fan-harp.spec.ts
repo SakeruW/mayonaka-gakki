@@ -139,3 +139,17 @@ test("the tray reads the disc's scale and lights the ring that sounds", async ({
   await page.getByRole("button", { name: "Kira Killer" }).click();
   await expect(scale.locator(".top")).not.toContainText("純正律");
 });
+
+test("on arrival the disc winds up from a standstill to 中", async ({ page }) => {
+  await page.goto("/#crt-drums");
+  await page.goto("/#fan-harp");
+  const rpm = async () => Number((await page.locator(".fan-harp .base > .vfd .row").innerText()).match(/(\d+)rpm/)![1]);
+  await page.waitForTimeout(400);
+  const early = await rpm();
+  expect(early).toBeLessThan(80);                       // creeping, not jumping
+  await page.waitForTimeout(1200);
+  const mid = await rpm();
+  expect(mid).toBeGreaterThan(early);
+  expect(mid).toBeLessThan(500);                        // still building
+  await expect.poll(rpm, { timeout: 8000 }).toBeGreaterThan(565);   // 中 = 583 rpm
+});

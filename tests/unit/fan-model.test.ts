@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PRESETS, SPEEDS, amplitudes, keyPick, light, parseRpm, parseSlots, ringWave, ringsOf, scaleOf, targetRpm, tune } from "../../src/instruments/fan-harp/model";
+import { PRESETS, SPEEDS, amplitudes, keyPick, light, parseRpm, parseSlots, motorStep, ringWave, ringsOf, scaleOf, targetRpm, tune } from "../../src/instruments/fan-harp/model";
 
 const blade = PRESETS[0];
 
@@ -97,5 +97,28 @@ describe("scaleOf", () => {
   });
   it("is not just when a ring falls outside the scale", () => {
     expect(scaleOf([24, 25], 654).just).toBe(false);
+  });
+});
+
+describe("motor", () => {
+  const run = (from: number, to: number, seconds: number) => {
+    const trace = [from];
+    for (let t = 0; t < seconds; t += 1 / 60) trace.push(motorStep(trace[trace.length - 1], to, 1 / 60));
+    return trace;
+  };
+  const at = (trace: number[], s: number) => trace[Math.round(s * 60)];
+
+  it("creeps from a standstill, builds up, then settles on 中", () => {
+    const target = 654 * SPEEDS[2], tr = run(0, target, 6);
+    expect(at(tr, 0.5)).toBeLessThan(target * 0.06);                   // barely turning at first
+    expect(at(tr, 1.5) - at(tr, 1)).toBeGreaterThan(at(tr, 0.5) - at(tr, 0));   // speeding up
+    expect(at(tr, 1.5)).toBeLessThan(target * 0.5);
+    expect(at(tr, 4.5)).toBeGreaterThan(target * 0.97);                 // there in a few seconds
+    expect(Math.max(...tr)).toBeLessThanOrEqual(target);                // no overshoot
+  });
+  it("coasts down and stops at 切", () => {
+    const tr = run(600, 0, 30);
+    expect(at(tr, 1)).toBeGreaterThan(300);
+    expect(tr[tr.length - 1]).toBe(0);
   });
 });

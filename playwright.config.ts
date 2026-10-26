@@ -8,6 +8,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? "github" : "list",
   use: { baseURL: external ?? "http://localhost:4173" },
+  expect: { timeout: 8000 },   // the fan winds up for a few seconds before it reaches its note
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
     { name: "phone", use: { ...devices["Pixel 7"] } },

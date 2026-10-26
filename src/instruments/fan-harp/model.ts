@@ -123,3 +123,22 @@ export function scaleOf(slots: readonly number[], rpm: number): DiscScale {
   const just = slots.every((h) => { const [n, d] = folded(h, ref); return JUST.has(`${n}/${d}`); });
   return { ref, just, rings };
 }
+
+// ---------- the motor ----------
+
+/** spin-up: the motor gives little torque from standstill and more as it turns, so it creeps, then builds, then settles */
+const SPIN_KICK = 30;      // rpm/s it can add from a standstill
+const SPIN_GAIN = 1.6;     // how fast that grows with speed, per second
+const SETTLE = 0.55;       // s, the last approach to the set speed
+const COAST = 2.4;         // s, slowing down on its own
+
+/** one step of the fan motor toward the set speed */
+export function motorStep(rpm: number, target: number, dt: number): number {
+  if (target > rpm) {
+    const settle = (target - rpm) * (1 - Math.exp(-dt / SETTLE));
+    const torque = (SPIN_KICK + SPIN_GAIN * rpm) * dt;
+    return rpm + Math.min(settle, torque);
+  }
+  const next = rpm + (target - rpm) * (1 - Math.exp(-dt / COAST));
+  return next < 0.3 && target === 0 ? 0 : next;
+}
