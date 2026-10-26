@@ -4,7 +4,7 @@ import { Knob, driveRing, pitchRing } from "../../ui/Knob";
 import { Vfd, signed } from "../../ui/Vfd";
 import { Keys, Rocker, Stepper } from "../../ui/controls";
 import { useCompact } from "../../ui/useCompact";
-import { SETS, charFor, clampStripes, type Mode } from "./model";
+import { SCREEN_TEXT, SETS, clampStripes, type Mode } from "./model";
 import { CrtRig } from "./rig";
 import "./crt-drums.css";
 
@@ -14,7 +14,6 @@ export default function CrtDrums({ title }: { title: string }) {
   const rackRef = useRef<HTMLElement>(null);
   const rigRef = useRef<CrtRig | null>(null);
   const [mode, setMode] = useState<Mode>("stripes");
-  const [text, setText] = useState("強");
   const [std, setStd] = useState<StandardId>("ntsc");
   const [bend, setBend] = useState(0);
   const [drive, setDrive] = useState(45);
@@ -22,7 +21,7 @@ export default function CrtDrums({ title }: { title: string }) {
   const [play, setPlay] = useState({ last: -1, sounding: false });
   const compact = useCompact();
 
-  const settings = { mode, text, std, bend, drive: drive / 100, stripes };
+  const settings = { mode, text: SCREEN_TEXT, std, bend, drive: drive / 100, stripes };
   const settingsRef = useRef(settings);
   const lastRef = useRef(play.last);
   useEffect(() => { settingsRef.current = settings; lastRef.current = play.last; });
@@ -33,7 +32,7 @@ export default function CrtDrums({ title }: { title: string }) {
     rigRef.current = rig;
     return () => { rig.dispose(); rigRef.current = null; };
   }, []);
-  useEffect(() => { rigRef.current?.update({ mode, text, std, bend, drive: drive / 100, stripes }); }, [mode, text, std, bend, drive, stripes]);
+  useEffect(() => { rigRef.current?.update({ mode, text: SCREEN_TEXT, std, bend, drive: drive / 100, stripes }); }, [mode, std, bend, drive, stripes]);
 
   const step = useCallback((i: number, d: number) => {
     setStripes((prev) => prev.map((n, k) => (k === i ? clampStripes(n + d) : n)));
@@ -62,13 +61,9 @@ export default function CrtDrums({ title }: { title: string }) {
   const field = fieldHz(sd, bend).toFixed(2) + "Hz";
   let vfd = <Vfd topRight={field} note="12:00" blink cents={null} />;
   if (play.last >= 0) {
-    const n = stripes[play.last], ch = charFor(text, play.last), who = `${play.last + 1}台目`;
-    if (mode === "text" && !ch) vfd = <Vfd topLeft={who} topRight={field} note="--" rest={!play.sounding} cents={null} />;
-    else {
-      const f = stripeHz(n, sd, bend), nn = noteOf(f);
-      vfd = <Vfd topLeft={`${who}　${mode === "stripes" ? `縞${n}本` : `「${ch}」`}`} topRight={field} note={nn} rest={!play.sounding}
-                 cents={nn.cents} bottom={[f.toFixed(1) + "Hz", signed(nn.cents, "¢")]} />;
-    }
+    const n = stripes[play.last], f = stripeHz(n, sd, bend), nn = noteOf(f);
+    vfd = <Vfd topLeft={`${play.last + 1}台目　${mode === "stripes" ? `縞${n}本` : `「${SCREEN_TEXT}」`}`} topRight={field} note={nn} rest={!play.sounding}
+               cents={nn.cents} bottom={[f.toFixed(1) + "Hz", signed(nn.cents, "¢")]} />;
   }
 
   return (
@@ -92,10 +87,8 @@ export default function CrtDrums({ title }: { title: string }) {
         <div className="ctrl">
           <Keys<Mode> label="入力" value={mode} onChange={setMode} options={[
             { value: "stripes", label: "縞", content: <i className="bars" /> },
-            { value: "text", label: "文字", content: "字" },
+            { value: "text", label: SCREEN_TEXT, content: SCREEN_TEXT },
           ]} />
-          <input className="scrtext" type="text" value={text} maxLength={12} spellCheck={false} autoComplete="off"
-                 aria-label="画面の文字" hidden={mode !== "text"} onChange={(e) => setText(e.target.value)} />
           <div className="under">
             <Knob className="vhold" label="音程" value={bend} min={-100} max={100} step={2} rest={0} onChange={setBend}
                   size={compact ? 46 : 58} ring={pitchRing} ringFrom={0.5} />

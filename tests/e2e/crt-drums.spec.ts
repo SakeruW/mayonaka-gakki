@@ -52,8 +52,11 @@ test("▲▼ change the stripes, the OSD and the note", async ({ page }) => {
 });
 
 test("text mode shows the letter and keeps each set's pitch", async ({ page }) => {
-  await page.getByRole("button", { name: "文字" }).click();
-  await expect(page.getByRole("textbox", { name: "画面の文字" })).toBeVisible();
+  const key = page.getByRole("button", { name: "強", exact: true });
+  await expect(key).toHaveText("強");
+  await key.click();
+  await expect(key).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".crt-drums input")).toHaveCount(0);   // the letter is fixed, nothing to type
   await page.locator("body").press("w");
   await expect(page.locator(".crt-drums .vfd .top")).toContainText("2台目　「強」");
   await expect(page.locator(".crt-drums .vfd .note")).toHaveText("G4");   // 6 stripes
@@ -77,7 +80,7 @@ test("60i/50i rocker switches the field rate", async ({ page }) => {
   await expect(page.locator(".crt-drums .vfd .top")).toContainText("50.00Hz");
 });
 
-test("no visible text beyond the title, readouts and the screen-text input", async ({ page }) => {
+test("no visible text beyond readouts and key faces", async ({ page }) => {
   const visible = await page.locator(".crt-drums").evaluate((root) => {
     const skip = (el: Element | null) => !!el?.closest(".vfd, .osd, .rocker, .key");
     const out: string[] = [];

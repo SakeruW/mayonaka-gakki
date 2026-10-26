@@ -33,12 +33,10 @@ for (const phone of PHONES) {
   }
 }
 
-test("CRT text mode still fits on iPhone 15", async ({ page }) => {
+test("CRT 強 mode still fits on iPhone 15", async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 659 });
   await page.goto("/#crt-drums");
-  await page.getByRole("button", { name: "文字" }).click();
-  const b = (await page.getByRole("textbox", { name: "画面の文字" }).boundingBox())!;
-  expect(b.y + b.height).toBeLessThanOrEqual(659);
+  await page.getByRole("button", { name: "強", exact: true }).click();
   expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(659);
 });
 

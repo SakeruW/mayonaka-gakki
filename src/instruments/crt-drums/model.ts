@@ -29,6 +29,9 @@ export function clampStripes(n: number) { return Math.max(1, Math.min(MAX_STRIPE
 export function rgb(hex: string): RGB { const n = parseInt(hex.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
 function mix(a: RGB, b: RGB, t: number) { return "rgb(" + a.map((v, k) => Math.round(v + (b[k] - v) * t)).join(",") + ")"; }
 
+/** what every set shows in text mode */
+export const SCREEN_TEXT = "強";
+
 export function charsOf(text: string) { return Array.from(text.trim()); }
 export function charFor(text: string, i: number) { const c = charsOf(text); return c.length ? c[i % c.length] : ""; }
 
