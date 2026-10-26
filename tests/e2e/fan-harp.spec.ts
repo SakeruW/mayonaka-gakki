@@ -20,8 +20,8 @@ test("the fan draws and spins without errors", async ({ page }) => {
 test("a ring key sounds that ring", async ({ page }) => {
   await expect(note(page)).toHaveText("--");
   await page.keyboard.down("1");
-  await expect(top(page)).toContainText("1輪目　18穴");
-  await expect(note(page)).toHaveText("F3");              // 18 holes at 中
+  await expect(top(page)).toContainText("1輪目　24穴");
+  await expect(note(page)).toHaveText("B♭3");             // 24 holes at 中, two semitones under C4
   await expect(note(page)).not.toHaveClass(/rest/);
   await page.keyboard.up("1");
   await expect(note(page)).toHaveText("--");
@@ -33,7 +33,7 @@ test("dragging the pick onto the disc plays the ring under it", async ({ page })
   const R = b.width / 2 * 0.8;
   await page.mouse.move(b.x + b.width / 2 + 0.6 * R, b.y + b.height / 2);
   await page.mouse.down();
-  await expect(top(page)).toContainText("4輪目　30穴");
+  await expect(top(page)).toContainText("4輪目　32穴");
   await page.mouse.up();
   await expect(note(page)).toHaveText("--");
 });
@@ -41,13 +41,13 @@ test("dragging the pick onto the disc plays the ring under it", async ({ page })
 test("強 spins up to the full note", async ({ page }) => {
   await page.getByRole("button", { name: "強" }).click();
   await page.keyboard.down("1");
-  await expect(note(page)).toHaveText("G3", { timeout: 10_000 });   // 18 × 654 / 60 = 196.2 Hz
+  await expect(note(page)).toHaveText("C4", { timeout: 10_000 });   // 24 × 654 / 60 = 261.6 Hz
   await page.keyboard.up("1");
 });
 
 test("the bulb switch silences the pick", async ({ page }) => {
   await page.keyboard.down("1");
-  await expect(note(page)).toHaveText("F3");
+  await expect(note(page)).toHaveText("B♭3");
   const power = page.getByRole("button", { name: "電球" });
   await expect(power).toHaveAttribute("aria-pressed", "true");
   await power.click();
@@ -59,11 +59,11 @@ test("the bulb switch silences the pick", async ({ page }) => {
 test("switching discs rebuilds the rings (was a crash)", async ({ page }) => {
   const errors = collectErrors(page);
   await page.getByRole("button", { name: "円盤を替える" }).click();
-  await page.getByRole("button", { name: "C4〜C5" }).click();
+  await page.getByRole("button", { name: "ハ調8輪" }).click();
   await page.keyboard.press("v");                                  // 強
   await page.keyboard.down("7");
-  await expect(top(page)).toContainText("7輪目　45穴");
-  await expect(note(page)).toHaveText("B4");
+  await expect(top(page)).toContainText("7輪目　40穴");
+  await expect(note(page)).toHaveText("A4");                      // 40 × 654 / 60 = 436 Hz
   await page.keyboard.up("7");
   expect(errors).toEqual([]);
 });
@@ -96,7 +96,7 @@ test("+ makes a disc from chosen notes; rings can be set, added and removed; it 
   await expect(page.getByRole("combobox", { name: "1輪目の音" })).toHaveValue("A2");
   await page.getByRole("button", { name: "この円盤を消す" }).click();
   await expect(page.getByRole("button", { name: "自作1" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "ハ調8輪" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "C4〜C5" })).toHaveAttribute("aria-pressed", "true");   // back to the disc it opens on
   expect(errors).toEqual([]);
 });
 
@@ -146,9 +146,8 @@ test("the tray reads the disc's scale and lights the ring that sounds", async ({
   await expect(scale.locator(".top")).toContainText("強 654rpm");
   const rows = scale.locator("li");
   await expect(rows).toHaveCount(8);
-  await expect(rows.nth(0)).toContainText("18穴3/4G3");          // the disc at its 強 speed
-  await page.keyboard.press("v");                                // 強, without tapping outside the tray
-  await expect(rows.nth(1)).toContainText("24穴1/1C4±0¢261.6Hz");
+  await expect(rows.nth(0)).toContainText("24穴1/1C4±0¢261.6Hz");   // the disc at its 強 speed
+  await expect(rows.nth(1)).toContainText("27穴9/8D4");
   await page.keyboard.down("5");
   await expect(rows.nth(4)).toHaveClass(/on/, { timeout: 10_000 });
   await page.keyboard.up("5");

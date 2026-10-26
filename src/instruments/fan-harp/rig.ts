@@ -8,8 +8,8 @@ import { BULB, DISC, DUTY, amplitudes, motorStep, keyPick, light, ringWave, ring
 export interface FanSettings { slots: number[]; base: number; speed: number; bend: number; bulb: boolean }
 export interface TunerState { rpm: number; reading: Reading | null }
 
-const REPORT_EVERY = 0.08;
-const HUB_BLUR = 1 / 20;   // s: how long the eye blends a spinning hub together   // the readout follows a spinning-up motor at ~12 Hz, not every frame
+const REPORT_EVERY = 0.08;   // the readout follows a spinning-up motor at ~12 Hz, not every frame
+const HUB_BLUR = 1 / 20;      // s: how long the eye blends a spinning hub together
 
 export class FanRig {
   private s: FanSettings;
@@ -19,7 +19,6 @@ export class FanRig {
   private pick: Pos = { x: 0.95, y: 0.92 };
   private finger: number | null = null;
   private keys: number[] = [];
-  private hub: HTMLImageElement | null = null;
   private ctx: CanvasRenderingContext2D;
   private off = document.createElement("canvas");
   private octx = this.off.getContext("2d")!;
@@ -52,7 +51,6 @@ export class FanRig {
       this.buildVoices();
     }
   }
-  setHub(img: HTMLImageElement | null) { this.hub = img; }
 
   /** call inside a gesture: starts audio the first time */
   wake() {
@@ -234,16 +232,9 @@ export class FanRig {
       bl.addColorStop(0, "rgba(255,252,240,1)"); bl.addColorStop(0.18, "rgba(255,228,170,0.6)"); bl.addColorStop(1, "rgba(255,170,80,0)");
       ctx.fillStyle = bl; ctx.beginPath(); ctx.arc(bx, by, R * 0.5, 0, Math.PI * 2); ctx.fill(); ctx.restore();
     }
-    // housing rim and hub cap (or the player's own picture)
+    // housing rim and the hub
     ctx.lineWidth = 5 * dpr; ctx.strokeStyle = "#b9c9c2"; ctx.beginPath(); ctx.arc(0, 0, R * 1.08, 0, Math.PI * 2); ctx.stroke();
-    const hub = this.hub, hr = R * 0.235;
-    if (!hub) this.drawHub(R, rps);
-    else {
-      const iw = hub.naturalWidth, ih = hub.naturalHeight, sc = (2 * hr) / Math.min(iw, ih);
-      ctx.save(); ctx.beginPath(); ctx.arc(0, 0, hr, 0, Math.PI * 2); ctx.clip();
-      ctx.drawImage(hub, -iw * sc / 2, -ih * sc / 2, iw * sc, ih * sc); ctx.restore();
-      ctx.lineWidth = 3 * dpr; ctx.strokeStyle = "#b9c9c2"; ctx.beginPath(); ctx.arc(0, 0, hr, 0, Math.PI * 2); ctx.stroke();
-    }
+    this.drawHub(R, rps);
     this.drawPick(R, this.contacts().length > 0);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }

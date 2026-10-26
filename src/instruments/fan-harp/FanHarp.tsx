@@ -8,10 +8,13 @@ import { DUTY, MAX_RINGS, NOTE_CHOICES, SPEED_KEYS, TEMPLATES, fitDisc, noteHz, 
 import { FanRig, type TunerState } from "./rig";
 import "./fan-harp.css";
 
-const HUB_KEY = "fanharp-hub", DISCS_KEY = "fanharp-discs", MAX_CUSTOM = 6;
+const DISCS_KEY = "fanharp-discs", MAX_CUSTOM = 6;
+/** the disc on the fan when the page opens: C4 to C5, the plain C major scale */
+const START_DISC = TEMPLATES.find((d) => d.id === "c4c5")!;
 const NEW_DISC_NOTES = ["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"];
 
-function loadHub() { try { return localStorage.getItem(HUB_KEY); } catch { return null; } }
+// an earlier version let a player put their own photo on the hub, kept in this browser; drop any that's still there
+try { localStorage.removeItem("fanharp-hub"); } catch { /* storage off: nothing kept */ }
 /** discs the player made, rebuilt from their notes; kept only in this browser */
 function loadCustom(): Disc[] {
   try {
@@ -48,21 +51,18 @@ function DiscThumb({ slots }: { slots: readonly number[] }) {
 export default function FanHarp({ title }: { title: string }) {
   const stageRef = useRef<HTMLCanvasElement>(null);
   const rigRef = useRef<FanRig | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const partsRef = useRef<HTMLElement>(null);
   const trayBtnRef = useRef<HTMLButtonElement>(null);
   const compact = useCompact();
   const [custom, setCustom] = useState<Disc[]>(loadCustom);
-  const [discId, setDiscId] = useState(TEMPLATES[0].id);
+  const [discId, setDiscId] = useState(START_DISC.id);
   const [speed, setSpeed] = useState(2);
   const [bend, setBend] = useState(0);
   const [bulb, setBulb] = useState(true);
-  const [hub, setHub] = useState<string | null>(loadHub);
-  const [hubBad, setHubBad] = useState(false);
   const [tray, setTray] = useState(false);
   const [tuner, setTuner] = useState<TunerState>({ rpm: 0, reading: null });
 
-  const disc = [...TEMPLATES, ...custom].find((d) => d.id === discId) ?? TEMPLATES[0];
+  const disc = [...TEMPLATES, ...custom].find((d) => d.id === discId) ?? START_DISC;
   const slots = disc.slots, base = disc.rpm;
   const settings = { slots, base, speed, bend, bulb };
   const settingsRef = useRef(settings);
@@ -75,17 +75,6 @@ export default function FanHarp({ title }: { title: string }) {
     return () => { rig.dispose(); rigRef.current = null; };
   }, []);
   useEffect(() => { rigRef.current?.update({ slots, base, speed, bend, bulb }); }, [slots, base, speed, bend, bulb]);
-
-  // the hub picture is read locally and kept only in this browser
-  useEffect(() => {
-    if (!hub) { rigRef.current?.setHub(null); return; }
-    const im = new Image();
-    let live = true;
-    im.onload = () => { if (live) { rigRef.current?.setHub(im); setHubBad(false); } };
-    im.onerror = () => { if (live) setHubBad(true); };
-    im.src = hub;
-    return () => { live = false; };
-  }, [hub]);
 
   // the tray closes on a tap anywhere else
   useEffect(() => {
@@ -130,24 +119,8 @@ export default function FanHarp({ title }: { title: string }) {
     if (notes.length < MAX_RINGS) editNotes([...notes, NOTE_CHOICES[Math.min(NOTE_CHOICES.length - 1, last + 2)]]);
   };
   const removeRing = (i: number) => { if (disc.notes!.length > 1) editNotes(disc.notes!.filter((_, k) => k !== i)); };
-  const deleteDisc = () => { keep(custom.filter((d) => d.id !== disc.id)); setDiscId(TEMPLATES[0].id); };
+  const deleteDisc = () => { keep(custom.filter((d) => d.id !== disc.id)); setDiscId(START_DISC.id); };
 
-  const pickHub = (f: File | undefined) => {
-    if (!f) return;
-    if (!/^image\//.test(f.type)) { setHubBad(true); return; }
-    const rd = new FileReader();
-    rd.onload = () => {
-      const url = String(rd.result);
-      setHub(url);
-      try { localStorage.setItem(HUB_KEY, url); } catch { /* too big to keep after a reload; it still shows now */ }
-    };
-    rd.readAsDataURL(f);
-  };
-  const clearHub = () => {
-    setHub(null); setHubBad(false);
-    if (fileRef.current) fileRef.current.value = "";
-    try { localStorage.removeItem(HUB_KEY); } catch { /* nothing kept */ }
-  };
 
   const r = tuner.reading;
   // the tray describes the disc itself, at its 強 speed; the main VFD shows what is sounding now
@@ -189,12 +162,6 @@ export default function FanHarp({ title }: { title: string }) {
                 </button>
               ))}
               {custom.length < MAX_CUSTOM && <button type="button" className="disc new" aria-label="円盤を作る" onClick={newDisc} />}
-            </div>
-            <div className="hubs">
-              <button type="button" className="hubpick" aria-label="ハブの写真を選ぶ" aria-invalid={hubBad}
-                      style={hub ? { backgroundImage: `url(${JSON.stringify(hub)})` } : undefined} onClick={() => fileRef.current?.click()} />
-              {hub && <button type="button" className="hubclear" aria-label="ハブの写真を外す" onClick={clearHub} />}
-              <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => pickHub(e.target.files?.[0])} />
             </div>
           </div>
           <div className="vfd scale" aria-label="円盤の音階">
