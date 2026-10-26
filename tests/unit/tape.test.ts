@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readTape, recordSample, runHead, wowFlutter, wrap } from "../../src/engine/tape";
 import {
-  LEVER, SUPPLY_R, TAPE_SECONDS, counter, demoLoop, handSpeed, hissLevel, leverAngle, leverPoint, leverSpeed, reelOmega, tapeOut, tapeUnitsPerSecond, shiftCents,
-  speedText, tapeStep, timeText, toneHz,
+  LEVER, SUPPLY_R, TAPE_SECONDS, demoLoop, handSpeed, hissLevel, leverAngle, leverPoint, leverSpeed, reelOmega, tapeOut, tapeUnitsPerSecond, 
+  speedText, tapeState, tapeStep, timeText, toneHz,
 } from "../../src/instruments/open-reel/model";
 
 describe("tape head maths", () => {
@@ -89,15 +89,14 @@ describe("tape sound", () => {
 });
 
 describe("readouts", () => {
-  it("formats speed, time, counter and pitch shift", () => {
-    expect(speedText(1)).toBe("1.00×");
-    expect(speedText(-0.5)).toBe("−0.50×");
+  it("says what the tape is doing in words, and how fast as a multiple", () => {
+    expect(tapeState(0, false)).toBe("停止");
+    expect(tapeState(0.5, false)).toBe("再生");
+    expect(tapeState(-0.5, false)).toBe("逆再生");
+    expect(tapeState(0.5, true)).toBe("録音");
+    expect(speedText(1)).toBe("1.0倍");
+    expect(speedText(-0.5)).toBe("0.5倍");
     expect(timeText(3.24)).toBe("0:03.2");
-    expect(counter(0)).toBe("0000");
-    expect(counter(4)).toBe("0012");
-    expect(counter(-1)).toBe("9997");
-    expect(shiftCents(2)).toBe(1200);
-    expect(shiftCents(0)).toBeNull();
   });
 });
 

@@ -160,9 +160,9 @@ export default function FanHarp({ title }: { title: string }) {
         <canvas ref={stageRef} className="stage" role="img" aria-label="扇風琴" />
       </div>
       <div className="base" onPointerDownCapture={wake}>
-        <Vfd topRight={r ? `${r.best + 1}輪目　${r.N}穴` : ""} note={r ? { name: r.name, oct: r.oct } : "--"} rest={!r}
-             cents={r ? r.cents : null}
-             bottom={[r ? r.hz.toFixed(1) + "Hz" : "", `${tuner.rpm}rpm`, r ? (r.also.length ? "+ " + r.also.join(" ") : signed(r.cents, "¢")) : ""]} />
+        <Vfd topLeft={r ? `${r.best + 1}輪目　${r.N}穴` : ""} topRight={`${tuner.rpm}rpm`}
+             note={r ? { name: r.name, oct: r.oct } : "--"} rest={!r} cents={r ? r.cents : null}
+             bottom={[r ? r.hz.toFixed(1) + "Hz" : "", r && r.also.length ? "+ " + r.also.join(" ") : ""]} />
         <div className="ctrl">
           <Keys<number> label="風量" value={speed} onChange={setSpeed}
                         options={SPEED_KEYS.map((k, i) => ({ value: i, label: k, content: k, className: "k" + i }))} />

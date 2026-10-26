@@ -3,7 +3,7 @@ import { brightness, collectErrors } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/#crt-drums");
-  await expect(page.locator(".crt-drums .vfd .top")).toContainText("Hz");
+  await expect(page.locator(".crt-drums .vfd .note")).toHaveText("12:00");
 });
 
 test("all six screens power on", async ({ page }) => {
@@ -35,7 +35,7 @@ test("touching a set sounds it and the VFD follows", async ({ page }) => {
   await page.mouse.down();
   await expect(tv).toHaveClass(/\blit\b/);
   await expect(vfd.locator(".note")).toHaveText("E4");          // 5 stripes on NTSC
-  await expect(vfd.locator(".top")).toContainText("1台目　縞5本");
+  await expect(vfd.locator(".top")).toHaveText("1台目縞5本");          // what is sounding | its stripes
   await expect(vfd.locator(".note")).not.toHaveClass(/rest/);
   await page.mouse.up();
   await expect(tv).not.toHaveClass(/\blit\b/);
@@ -47,7 +47,7 @@ test("▲▼ change the stripes, the OSD and the note", async ({ page }) => {
   await tv.getByRole("button", { name: "4台目 縞を増やす" }).click();
   await expect(tv.locator(".osd")).toHaveText("3本");
   await expect(tv.locator(".osd")).toHaveClass(/show/);
-  await expect(page.locator(".crt-drums .vfd .top")).toContainText("4台目　縞3本");
+  await expect(page.locator(".crt-drums .vfd .top")).toHaveText("4台目縞3本");
   await expect(page.locator(".crt-drums .vfd .note")).toHaveText("G3");
 });
 
@@ -58,7 +58,7 @@ test("text mode shows the letter and keeps each set's pitch", async ({ page }) =
   await expect(key).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".crt-drums input")).toHaveCount(0);   // the letter is fixed, nothing to type
   await page.locator("body").press("w");
-  await expect(page.locator(".crt-drums .vfd .top")).toContainText("2台目　「強」");
+  await expect(page.locator(".crt-drums .vfd .top")).toHaveText("2台目「強」");
   await expect(page.locator(".crt-drums .vfd .note")).toHaveText("G4");   // 6 stripes
 });
 
@@ -72,12 +72,15 @@ test("knobs turn, show their ring, and reset on double-click", async ({ page }) 
   await expect(knob).toHaveAttribute("aria-valuenow", "0");
 });
 
-test("60i/50i rocker switches the field rate", async ({ page }) => {
+test("the 50 | 60 rocker switches the field rate, and the pitch follows", async ({ page }) => {
   const rocker = page.getByRole("button", { name: "フィールド周波数" });
-  await expect(rocker).toHaveText("60i");
+  await expect(rocker).toHaveText("5060");
+  await expect(rocker).toHaveAttribute("aria-pressed", "false");   // the 60 half down
   await rocker.click();
-  await expect(rocker).toHaveText("50i");
-  await expect(page.locator(".crt-drums .vfd .top")).toContainText("50.00Hz");
+  await expect(rocker).toHaveAttribute("aria-pressed", "true");    // the 50 half down
+  await page.keyboard.down("q");
+  await expect(page.locator(".crt-drums .vfd .note")).toHaveText("C♯4");   // 5 stripes at 50 Hz: 271 Hz
+  await page.keyboard.up("q");
 });
 
 test("no visible text beyond readouts and key faces", async ({ page }) => {

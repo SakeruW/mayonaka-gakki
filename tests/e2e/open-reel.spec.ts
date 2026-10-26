@@ -1,8 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 import { brightness, collectErrors } from "./helpers";
 
-const speed = (page: Page) => page.locator(".open-reel .vfd .note");
-export const speedValue = async (page: Page) => Number((await speed(page).innerText()).replace("−", "-").replace("×", ""));
+/** the tape's state word (停止, 再生, 逆再生, 録音), top left of its display */
+const state = (page: Page) => page.locator(".open-reel .vfd .top span").first();
+/** the tape's speed, signed by its direction: the top right says how fast, the top left which way */
+export const speedValue = async (page: Page) => {
+  const [word, fast] = await page.locator(".open-reel .vfd .top span").allInnerTexts();
+  const v = Number(fast.replace("倍", ""));
+  return word === "逆再生" ? -v : v;
+};
+const position = (page: Page) => page.locator(".open-reel .vfd .note");
 
 /** the deck in deck units: 10 across */
 async function deck(page: Page) {
@@ -33,30 +40,30 @@ export async function rock(page: Page, dphi: number, steps = 10, from = 0.87) {
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/#open-reel");
-  await expect(speed(page)).toHaveText("0.00×");
+  await expect(state(page)).toHaveText("停止");
 });
 
 test("the deck draws without errors and sits still until a hand moves the tape", async ({ page }) => {
   const errors = collectErrors(page);
   await page.waitForTimeout(500);
   expect(await brightness(page, page.locator(".open-reel .deck"))).toBeGreaterThan(0.08);
-  await expect(speed(page)).toHaveText("0.00×");
+  await expect(state(page)).toHaveText("停止");
   expect(errors).toEqual([]);
 });
 
 test("swinging the lever drags the tape across the head and back; holding it still stops the tape", async ({ page }) => {
   const errors = collectErrors(page);
   const up = await rock(page, -0.05);                          // swinging up draws tape out: forward
-  expect(up.extreme).toBeGreaterThan(0.15);
+  expect(up.extreme).toBeGreaterThanOrEqual(0.1);                 // the display shows tenths: any reading forward
+  await expect(position(page)).not.toHaveText("0:00.0");          // the tape moved on past the head
   await page.waitForTimeout(400);
-  await expect(speed(page)).toHaveText("0.00×");               // held still
+  await expect(state(page)).toHaveText("停止");               // held still
   const d = await deck(page);
   let back = 0, phi = up.phi;
   for (let i = 0; i < 16; i++) { phi += 0.05; const p = onArc(phi); await page.mouse.move(...d.at(p.x, p.y)); back = Math.min(back, await speedValue(page)); }
-  expect(back).toBeLessThan(-0.15);                            // swinging down lets it back in: backwards
+  expect(back).toBeLessThanOrEqual(-0.1);                      // swinging down lets it back in: backwards
   await page.mouse.up();
-  await expect(speed(page)).toHaveText("0.00×", { timeout: 2000 });
-  await expect(page.locator(".open-reel .vfd .row")).not.toContainText("0:00.0");   // the head read along the tape
+  await expect(state(page)).toHaveText("停止", { timeout: 2000 });   // the head read along the tape
   expect(errors).toEqual([]);
 });
 
@@ -64,7 +71,7 @@ test("holding ↑ → or ↓ ← swings the lever from the keyboard", async ({ p
   await page.keyboard.down("ArrowRight");
   await expect.poll(() => speedValue(page)).toBeGreaterThan(0.3);
   await page.keyboard.up("ArrowRight");
-  await expect(speed(page)).toHaveText("0.00×", { timeout: 2000 });
+  await expect(state(page)).toHaveText("停止", { timeout: 2000 });
   await page.keyboard.down("ArrowLeft");
   await expect.poll(() => speedValue(page)).toBeLessThan(-0.3);
   await page.keyboard.up("ArrowLeft");
@@ -74,11 +81,11 @@ test("the tape still plays where AudioWorklet isn't allowed (plain-http pages)",
   await page.addInitScript(() => { Object.defineProperty(BaseAudioContext.prototype, "audioWorklet", { get: () => undefined }); });
   const errors = collectErrors(page);
   await page.reload();                                           // injected scripts only run on a real load
-  await expect(speed(page)).toHaveText("0.00×");
+  await expect(state(page)).toHaveText("停止");
   await page.keyboard.down("ArrowRight");
   await expect.poll(() => speedValue(page)).toBeGreaterThan(0.3);
   await page.keyboard.up("ArrowRight");
-  await expect(page.locator(".open-reel .vfd .row")).not.toContainText("0:00.0");   // the main-thread head read the tape
+  await expect(position(page)).not.toHaveText("0:00.0");   // the main-thread head read the tape
   expect(errors).toEqual([]);
 });
 
@@ -118,7 +125,7 @@ for (const head of ["worklet", "main-thread"] as const) {
     if (head === "main-thread") await page.addInitScript(() => { Object.defineProperty(BaseAudioContext.prototype, "audioWorklet", { get: () => undefined }); });
     await page.addInitScript(LISTEN);
     await page.reload();                                         // injected scripts only run on a real load
-    await expect(speed(page)).toHaveText("0.00×");
+    await expect(state(page)).toHaveText("停止");
     const peak = () => page.evaluate(() => (window as unknown as { peak: number }).peak);
     await page.keyboard.down("ArrowDown"); await page.waitForTimeout(700); await page.keyboard.up("ArrowDown");   // swung down: the tape plays back
     await page.waitForTimeout(500);

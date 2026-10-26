@@ -3,7 +3,7 @@ import { brightness, collectErrors } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/#fan-harp");
-  await expect(page.locator(".fan-harp .base > .vfd .row")).toContainText("rpm");   // the rig is running
+  await expect(page.locator(".fan-harp .base > .vfd .top")).toContainText("rpm");   // the rig is running
 });
 
 const note = (page: import("@playwright/test").Page) => page.locator(".fan-harp .base > .vfd .note");
@@ -13,14 +13,14 @@ test("the fan draws and spins without errors", async ({ page }) => {
   const errors = collectErrors(page);
   await page.waitForTimeout(500);
   expect(await brightness(page, page.locator(".fan-harp .stage"))).toBeGreaterThan(0.1);
-  await expect(page.locator(".fan-harp .base > .vfd .row")).toContainText("rpm");
+  await expect(page.locator(".fan-harp .base > .vfd .top")).toContainText("rpm");
   expect(errors).toEqual([]);
 });
 
 test("a ring key sounds that ring", async ({ page }) => {
   await expect(note(page)).toHaveText("--");
   await page.keyboard.down("1");
-  await expect(top(page)).toHaveText("1輪目　18穴");
+  await expect(top(page)).toContainText("1輪目　18穴");
   await expect(note(page)).toHaveText("F3");              // 18 holes at 中
   await expect(note(page)).not.toHaveClass(/rest/);
   await page.keyboard.up("1");
@@ -33,7 +33,7 @@ test("dragging the pick onto the disc plays the ring under it", async ({ page })
   const R = b.width / 2 * 0.8;
   await page.mouse.move(b.x + b.width / 2 + 0.6 * R, b.y + b.height / 2);
   await page.mouse.down();
-  await expect(top(page)).toHaveText("4輪目　30穴");
+  await expect(top(page)).toContainText("4輪目　30穴");
   await page.mouse.up();
   await expect(note(page)).toHaveText("--");
 });
@@ -62,7 +62,7 @@ test("switching discs rebuilds the rings (was a crash)", async ({ page }) => {
   await page.getByRole("button", { name: "C4〜C5" }).click();
   await page.keyboard.press("v");                                  // 強
   await page.keyboard.down("7");
-  await expect(top(page)).toHaveText("7輪目　45穴");
+  await expect(top(page)).toContainText("7輪目　45穴");
   await expect(note(page)).toHaveText("B4");
   await page.keyboard.up("7");
   expect(errors).toEqual([]);
@@ -159,7 +159,7 @@ test("the tray reads the disc's scale and lights the ring that sounds", async ({
 test("on arrival the disc winds up from a standstill to 中", async ({ page }) => {
   await page.goto("/#crt-drums");
   await page.goto("/#fan-harp");
-  const rpm = async () => Number((await page.locator(".fan-harp .base > .vfd .row").innerText()).match(/(\d+)rpm/)![1]);
+  const rpm = async () => Number((await page.locator(".fan-harp .base > .vfd .top").innerText()).match(/(\d+)rpm/)![1]);
   await page.waitForTimeout(400);
   const early = await rpm();
   expect(early).toBeLessThan(80);                       // creeping, not jumping

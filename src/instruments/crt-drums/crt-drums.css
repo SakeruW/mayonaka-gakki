@@ -57,8 +57,7 @@
   .crt-drums .deck { padding: 10px; gap: 8px; }
   .crt-drums .ctrl { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
   .crt-drums .keys { flex: none; }
-  .crt-drums .key { width: 46px; height: 46px; font-size: 20px; }
+  .crt-drums .key { width: 46px; height: 52px; font-size: 19px; }
   .crt-drums .key .bars { width: 22px; height: 19px; }
   .crt-drums .under { gap: 0; }
-  .crt-drums .rocker { width: 54px; height: 32px; }
   }

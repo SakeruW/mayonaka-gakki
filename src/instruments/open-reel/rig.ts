@@ -7,12 +7,12 @@ import { onFrame } from "../../engine/loop";
 import { createTapeHead, type TapeHead } from "../../engine/tape";
 import workletUrl from "./tape-worklet.ts?worker&url";
 import {
-  DECK, HUB_R, LEVER, SLOT, SUPPLY_R, TAPE_RATE, counter, demoLoop, headOutput, hissLevel, leverAngle, leverPoint, leverSpeed, reelOmega,
+  DECK, HUB_R, LEVER, SLOT, SUPPLY_R, TAPE_RATE, TAPE_SECONDS, demoLoop, headOutput, hissLevel, leverAngle, leverPoint, leverSpeed, reelOmega,
   tapeOut, tapeStep, toneHz,
 } from "./model";
 
 export interface DeckSettings { rec: boolean }
-export interface Readout { s: number; pos: number; counter: string; recording: boolean }
+export interface Readout { s: number; pos: number; recording: boolean }
 export type MicState = "off" | "on" | "denied";
 
 type Pt = { x: number; y: number };
@@ -30,11 +30,11 @@ const STALE_MS = 60;          // a hand that hasn't moved for this long is holdi
 export class TapeRig {
   private s: DeckSettings;
   private speed = 0;                   // tape speed, × recorded speed
+  private pos = 0;                     // where the head is on the tape, in tape seconds: kept here so the display moves with the reel, audio or not
   private reelAngle = 0;
   private phi: number = LEVER.rest;    // the lever's swing below the horizontal
   private keyDir = 0;                  // ↑ ↓ (or ← →) swing the lever from the keyboard
   private lever: LeverHand | null = null;
-  private revs = 0;
   private ctx: CanvasRenderingContext2D;
   private plate: HTMLCanvasElement | null = null;
   private W = 0; private H = 0; private U = 0; private dpr = 1;
@@ -200,7 +200,7 @@ export class TapeRig {
       this.speed = tapeStep(this.speed, dt);
     }
     this.reelAngle += reelOmega(this.speed, SUPPLY_R) * dt;
-    this.revs += reelOmega(this.speed, SUPPLY_R) * dt / (2 * Math.PI);
+    this.pos = (((this.pos + this.speed * dt) % TAPE_SECONDS) + TAPE_SECONDS) % TAPE_SECONDS;
 
     this.recording = this.s.rec && !!this.mic && this.speed > 0.05;
     const head = this.head;
@@ -234,12 +234,12 @@ export class TapeRig {
   }
 
   private report(dt: number) {
-    const pos = this.head?.position() ?? 0, c = counter(this.revs);
-    const key = `${this.speed.toFixed(2)}|${c}|${pos.toFixed(1)}|${this.recording}`;
+    const pos = this.pos;
+    const key = `${this.speed.toFixed(2)}|${pos.toFixed(1)}|${this.recording}`;
     this.sinceReport += dt;
     if (key === this.lastKey || this.sinceReport < REPORT_EVERY) return;
     this.lastKey = key; this.sinceReport = 0;
-    this.onReadout({ s: this.speed, pos, counter: c, recording: this.recording });
+    this.onReadout({ s: this.speed, pos, recording: this.recording });
   }
 
   // ---------- drawing ----------

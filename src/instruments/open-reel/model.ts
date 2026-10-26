@@ -48,13 +48,11 @@ export function hissLevel(s: number, contact: number) { return 0.006 * Math.min(
 
 // ---------- readouts ----------
 
-/** the four-digit counter, geared to the supply reel: three counts a turn */
-export const COUNTER_GEAR = 3;
-export function counter(revs: number) { const n = Math.floor(revs * COUNTER_GEAR); return String(((n % 10000) + 10000) % 10000).padStart(4, "0"); }
-export function speedText(s: number) { return (s < -0.005 ? "−" : "") + Math.abs(s).toFixed(2) + "×"; }
+/** what the tape is doing, in words */
+export function tapeState(s: number, recording: boolean) { return recording ? "録音" : Math.abs(s) < 0.01 ? "停止" : s > 0 ? "再生" : "逆再生"; }
+/** how fast, as a multiple of the speed it was recorded at; the direction is in tapeState */
+export function speedText(s: number) { return Math.abs(s).toFixed(1) + "倍"; }
 export function timeText(sec: number) { const m = Math.floor(sec / 60), r = sec - m * 60; return `${m}:${r.toFixed(1).padStart(4, "0")}`; }
-/** pitch of the tape against how it was recorded, in cents (null when it isn't moving) */
-export function shiftCents(s: number) { return Math.abs(s) < 0.01 ? null : Math.round(1200 * Math.log2(Math.abs(s))); }
 
 // ---------- what is on the tape when the deck is switched on ----------
 

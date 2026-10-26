@@ -10,7 +10,7 @@
 .fan-harp .vfd { border-radius: 10px; }
 
 .fan-harp .ctrl { display: grid; gap: 10px; align-content: center; justify-items: start; }
-.fan-harp .key { width: 52px; height: 60px; border-radius: 6px 6px 9px 9px; font-size: 21px; --key-ink: var(--plastic-ink); --key-on-ink: var(--plastic-ink); }
+.fan-harp .key { height: 60px; --key-ink: var(--plastic-ink); --key-on-ink: var(--plastic-ink); }
 .fan-harp .key.k0 { --key-bg: var(--key-off); --key-on-bg: var(--key-off); --key-side: #a9a493; }
 .fan-harp .key.k1 { --key-bg: var(--key-low); --key-on-bg: var(--key-low); --key-side: #6b97b6; }
 .fan-harp .key.k2 { --key-bg: var(--key-mid); --key-on-bg: var(--key-mid); --key-side: #72a983; }
@@ -19,21 +19,12 @@
 .fan-harp .under { display: flex; gap: 14px; align-items: center; }
 .fan-harp .dimmer { --knob-face: radial-gradient(circle at 35% 30%, #fbfdfc, #c7d9d0 60%, #9fbbb0);
   --knob-shadow: 0 3px 0 rgba(29,56,50,0.35), inset 0 -3px 6px rgba(0,0,0,0.12); --knob-mark: var(--plastic-ink);
-  --ring: #e0861c; --ring-dim: rgba(29,56,50,0.22); }
+  --ring: #0f9a77; --ring-dim: rgba(29,56,50,0.22); }   /* pitch rings are green on every instrument */
 .fan-harp .switches { display: flex; gap: 10px; align-items: center; }
-/* the bulb's I/O rocker: a black legacy power switch; the pressed side sits low, the I glows warm while the bulb is lit */
-.fan-harp .power { width: 54px; height: 32px; padding: 3px; border-radius: 6px; background: #121716;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.7), 0 1px 0 rgba(255,255,255,0.5); }
-.fan-harp .power span { grid-template-columns: 1fr 1fr; border-radius: 4px; transform: none;
-  background: linear-gradient(90deg, #4a504e 0 50%, #1b1f1e 50% 100%);
-  box-shadow: inset -1px 0 0 rgba(255,255,255,0.08), inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -2px 0 rgba(0,0,0,0.4); }
-.fan-harp .power[aria-pressed="true"] span { transform: none; background: linear-gradient(90deg, #1b1f1e 0 50%, #4a504e 50% 100%); }
-.fan-harp .power i { justify-self: center; display: block; }
-.fan-harp .power .mark-on { width: 2.5px; height: 11px; border-radius: 1px; background: #d9ddd9; }
-.fan-harp .power .mark-off { width: 10px; height: 10px; border-radius: 50%; border: 2.5px solid #d9ddd9; }
+/* the bulb's switch is the shared rocker with I and O drawn on it; the I glows warm while the bulb is lit */
+.fan-harp .power .mark-on { width: 2.5px; height: 11px; border-radius: 1px; background: currentColor; }
+.fan-harp .power .mark-off { width: 10px; height: 10px; border-radius: 50%; border: 2.5px solid currentColor; }
 .fan-harp .power[aria-pressed="true"] .mark-on { background: #ffd28a; box-shadow: 0 0 6px 1px rgba(255,180,74,0.9); }
-.fan-harp .power[aria-pressed="true"] .mark-off { border-color: #7d837f; }
-.fan-harp .power[aria-pressed="false"] .mark-on { background: #7d837f; }
 .fan-harp .tray-btn { width: 40px; height: 40px; padding: 2px; border: none; border-radius: 50%; cursor: pointer; background: #2b3d38; display: grid;
   box-shadow: 0 2px 0 rgba(29,56,50,0.35); }
 .fan-harp .tray-btn[aria-expanded="true"] { transform: translateY(2px); box-shadow: inset 0 3px 6px rgba(0,0,0,0.6), 0 0 0 2px var(--plastic-ink); }
@@ -102,7 +93,7 @@
   .fan-harp .key { flex: 1; width: auto; min-width: 0; height: 50px; font-size: 18px; }
   .fan-harp .under { gap: 0; }
   .fan-harp .switches { flex-direction: column; gap: 6px; }
-  .fan-harp .power { width: 48px; height: 28px; }
+  .fan-harp .rocker { width: 48px; height: 28px; }
   .fan-harp .tray-btn { width: 32px; height: 32px; }
   .fan-harp .scale ol { font-size: 12px; }
   .fan-harp .scale li { grid-template-columns: 1em 3em 2.8em 3.2em 3em 1fr 18px; gap: 4px; }

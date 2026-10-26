@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { STANDARDS, fieldHz, noteOf, stripeHz, type StandardId } from "../../engine/pattern-wave";
+import { STANDARDS, noteOf, stripeHz, type StandardId } from "../../engine/pattern-wave";
 import { Knob, driveRing, pitchRing } from "../../ui/Knob";
-import { Vfd, signed } from "../../ui/Vfd";
+import { Vfd } from "../../ui/Vfd";
 import { Keys, Rocker, Stepper } from "../../ui/controls";
 import { useCompact } from "../../ui/useCompact";
 import { SCREEN_TEXT, SETS, clampStripes, type Mode } from "./model";
@@ -58,12 +58,11 @@ export default function CrtDrums({ title }: { title: string }) {
 
   // VFD: blinks 12:00 like an unset deck until the first hit
   const sd = STANDARDS[std];
-  const field = fieldHz(sd, bend).toFixed(2) + "Hz";
-  let vfd = <Vfd topRight={field} note="12:00" blink cents={null} />;
+  let vfd = <Vfd note="12:00" blink />;
   if (play.last >= 0) {
     const n = stripes[play.last], f = stripeHz(n, sd, bend), nn = noteOf(f);
-    vfd = <Vfd topLeft={`${play.last + 1}台目　${mode === "stripes" ? `縞${n}本` : `「${SCREEN_TEXT}」`}`} topRight={field} note={nn} rest={!play.sounding}
-               cents={nn.cents} bottom={[f.toFixed(1) + "Hz", signed(nn.cents, "¢")]} />;
+    vfd = <Vfd topLeft={`${play.last + 1}台目`} topRight={mode === "stripes" ? `縞${n}本` : `「${SCREEN_TEXT}」`}
+               note={nn} rest={!play.sounding} cents={nn.cents} bottom={[f.toFixed(1) + "Hz"]} />;
   }
 
   return (
@@ -95,7 +94,7 @@ export default function CrtDrums({ title }: { title: string }) {
             <Knob className="drive" label="歪み" value={drive} min={0} max={100} step={1} rest={45} onChange={setDrive}
                   size={compact ? 36 : 44} ring={driveRing}
                   style={{ boxShadow: `0 3px 0 rgba(0,0,0,0.45), inset 0 -3px 6px rgba(0,0,0,0.3), 0 0 ${Math.round(drive / 5)}px rgba(242,193,78,${(drive / 100 * 0.55).toFixed(2)})` }} />
-            <Rocker label="フィールド周波数" on={std === "pal"} onClick={() => setStd((s) => (s === "ntsc" ? "pal" : "ntsc"))}>{sd.label}</Rocker>
+            <Rocker label="フィールド周波数" on={std === "pal"} onClick={() => setStd((s) => (s === "ntsc" ? "pal" : "ntsc"))}><b>50</b><b>60</b></Rocker>
           </div>
         </div>
       </div>
