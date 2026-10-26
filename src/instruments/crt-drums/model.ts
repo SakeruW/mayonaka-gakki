@@ -7,7 +7,7 @@ export type Mode = "stripes" | "text";
 export type RGB = [number, number, number];
 export interface Pos { x: number; y: number }
 
-/** the rack, top shelf first; colours from the reference photo */
+/** the sets, top row first; colours from the reference photo */
 export const SETS = [
   { n: 5, hue: "#2d5cff", hi: "#a8d8ff", key: "q" },
   { n: 6, hue: "#ff3d14", hi: "#ffd86b", key: "w" },

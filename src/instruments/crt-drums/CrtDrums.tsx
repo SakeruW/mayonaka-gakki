@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { STANDARDS, noteOf, stripeHz, type StandardId } from "../../engine/pattern-wave";
 import { Knob, driveRing, pitchRing } from "../../ui/Knob";
 import { Vfd } from "../../ui/Vfd";
@@ -8,7 +8,7 @@ import { SCREEN_TEXT, SETS, clampStripes, type Mode } from "./model";
 import { CrtRig } from "./rig";
 import "./crt-drums.css";
 
-// A rack of Showa CRT sets at midnight, two shelves high; a charcoal video deck below with the VFD,
+// Showa CRT sets at midnight, stacked two high; a charcoal video deck below with the VFD,
 // the input keys, V-HOLD, drive and the 60i/50i switch.
 export default function CrtDrums({ title }: { title: string }) {
   const rackRef = useRef<HTMLElement>(null);
@@ -70,16 +70,13 @@ export default function CrtDrums({ title }: { title: string }) {
       <div className="rack-area">
       <section className="rack" ref={rackRef} aria-label="ブラウン管ドラム">
         {SETS.map((_, i) => (
-          <Fragment key={i}>
-          <div className="tv">
+          <div className="tv" key={i}>
             <div className="screen" data-i={i} role="button" aria-label={`${i + 1}台目`}><canvas /><span className="osd" /></div>
             <div className="panel">
               <Stepper label={`${i + 1}台目 縞`} onStep={(d) => step(i, d)} />
               <i className="jacks" /><i className="rca" /><i className="led" />
             </div>
           </div>
-          {i % 3 === 2 && <i className="shelf" aria-hidden="true" />}
-          </Fragment>
         ))}
       </section>
       </div>
