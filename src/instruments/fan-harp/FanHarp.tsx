@@ -3,7 +3,7 @@ import { Knob, pitchRing } from "../../ui/Knob";
 import { Vfd, signed } from "../../ui/Vfd";
 import { Keys, Rocker } from "../../ui/controls";
 import { useCompact } from "../../ui/useCompact";
-import { DUTY, PRESETS, SPEED_KEYS, parseRpm, parseSlots, ringsOf } from "./model";
+import { DUTY, PRESETS, SPEED_KEYS, parseRpm, parseSlots, ringsOf, scaleOf, targetRpm } from "./model";
 import { FanRig, type TunerState } from "./rig";
 import "./fan-harp.css";
 
@@ -126,6 +126,8 @@ export default function FanHarp({ title }: { title: string }) {
   };
 
   const r = tuner.reading;
+  // the tray reads the disc at the current speed key (切 shows 強)
+  const scale = scaleOf(slots, targetRpm(base, speed === 0 ? 3 : speed, bend));
   const wake = () => rigRef.current?.wake();
 
   return (
@@ -154,24 +156,38 @@ export default function FanHarp({ title }: { title: string }) {
         </div>
 
         <section ref={partsRef} className="parts" aria-label="円盤" hidden={!tray}>
-          <div className="discs" role="group" aria-label="円盤の種類">
-            {PRESETS.map((p) => (
-              <button key={p.id} type="button" className="disc" aria-pressed={preset === p.id} aria-label={p.label} onClick={() => choosePreset(p)}>
-                <DiscThumb slots={p.slots} />
-              </button>
-            ))}
+          <div className="parts-top">
+            <div className="discs" role="group" aria-label="円盤の種類">
+              {PRESETS.map((p) => (
+                <button key={p.id} type="button" className="disc" aria-pressed={preset === p.id} aria-label={p.label} onClick={() => choosePreset(p)}>
+                  <DiscThumb slots={p.slots} />
+                </button>
+              ))}
+            </div>
+            <div className="hubs">
+              <button type="button" className="hubpick" aria-label="ハブの写真を選ぶ" aria-invalid={hubBad}
+                      style={hub ? { backgroundImage: `url(${JSON.stringify(hub)})` } : undefined} onClick={() => fileRef.current?.click()} />
+              {hub && <button type="button" className="hubclear" aria-label="ハブの写真を外す" onClick={clearHub} />}
+              <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => pickHub(e.target.files?.[0])} />
+            </div>
           </div>
-          <input className="slots" type="text" value={slotsText} spellCheck={false} autoComplete="off" inputMode="numeric"
-                 aria-label="穴の数（内側から）" aria-invalid={!slotsOk}
-                 onChange={(e) => setSlotsText(e.target.value)} onBlur={commitSlots} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
-          <input className="rpm" type="number" min={30} max={3000} step={1} value={rpmText} inputMode="numeric"
-                 aria-label="強の回転数" aria-invalid={!rpmOk}
-                 onChange={(e) => setRpmText(e.target.value)} onBlur={commitRpm} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
-          <div className="hubs">
-            <button type="button" className="hubpick" aria-label="ハブの写真を選ぶ" aria-invalid={hubBad}
-                    style={hub ? { backgroundImage: `url(${JSON.stringify(hub)})` } : undefined} onClick={() => fileRef.current?.click()} />
-            {hub && <button type="button" className="hubclear" aria-label="ハブの写真を外す" onClick={clearHub} />}
-            <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => pickHub(e.target.files?.[0])} />
+          <div className="vfd scale" aria-label="円盤の音階">
+            <div className="top"><span>{scale.just ? "純正律" : ""}</span><span>{`1/1 = ${scale.ref}穴`}</span></div>
+            <ol>
+              {scale.rings.map((g, i) => (
+                <li key={i} className={r?.best === i ? "on" : undefined}>
+                  <span>{i + 1}</span><span>{g.holes}穴</span><span>{g.ratio}</span><span>{g.name}{g.oct}</span><span>{g.hz.toFixed(1)}Hz</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <div className="parts-inputs">
+            <input className="slots" type="text" value={slotsText} spellCheck={false} autoComplete="off" inputMode="numeric"
+                   aria-label="穴の数（内側から）" aria-invalid={!slotsOk}
+                   onChange={(e) => setSlotsText(e.target.value)} onBlur={commitSlots} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+            <input className="rpm" type="number" min={30} max={3000} step={1} value={rpmText} inputMode="numeric"
+                   aria-label="強の回転数" aria-invalid={!rpmOk}
+                   onChange={(e) => setRpmText(e.target.value)} onBlur={commitRpm} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
           </div>
         </section>
       </div>

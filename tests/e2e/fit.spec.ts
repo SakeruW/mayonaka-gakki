@@ -7,7 +7,7 @@ const PHONES = [
   { name: "iPhone 18 Pro Max", width: 440, height: 763 },
 ];
 const PAGES = [
-  { hash: "#fan-harp", controls: [".fan-harp .stage", ".fan-harp .vfd", ".fan-harp .keys", ".fan-harp .dimmer .knob", ".fan-harp .power", ".fan-harp .tray-btn"] },
+  { hash: "#fan-harp", controls: [".fan-harp .stage", ".fan-harp .base > .vfd", ".fan-harp .keys", ".fan-harp .dimmer .knob", ".fan-harp .power", ".fan-harp .tray-btn"] },
   { hash: "#crt-drums", controls: [".crt-drums .rack", ".crt-drums .vfd", ".crt-drums .keys", ".crt-drums .vhold .knob", ".crt-drums .drive .knob", ".crt-drums .rocker"] },
 ];
 

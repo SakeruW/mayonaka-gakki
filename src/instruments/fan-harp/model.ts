@@ -91,3 +91,35 @@ export function parseRpm(text: string): number | null {
   const v = Math.round(Number(text));
   return v >= MIN_RPM && v <= MAX_RPM ? v : null;
 }
+
+// ---------- what the disc is tuned to ----------
+
+/** just intonation within one octave: do re mi fa sol la ti, plus the flat seventh */
+const JUST = new Set(["1/1", "9/8", "5/4", "4/3", "3/2", "5/3", "15/8", "16/9", "2/1"]);
+
+function gcd(a: number, b: number): number { while (b) [a, b] = [b, a % b]; return a; }
+function fraction(n: number, d: number) { const g = gcd(n, d); return [n / g, d / g] as const; }
+/** fold a ratio into one octave, [1, 2) */
+function folded(n: number, d: number) { while (n >= 2 * d) d *= 2; while (n < d) n *= 2; return fraction(n, d); }
+
+export interface RingInfo { holes: number; ratio: string; name: string; oct: number; hz: number }
+export interface DiscScale { ref: number; just: boolean; rings: RingInfo[] }
+
+/**
+ * Each ring as a ratio to the disc's home ring, the one that makes the simplest ratios. Hole counts are the ratios:
+ * a ring with 3/2 the holes of another sounds a fifth above it, at any speed. A disc is "just" when every ring
+ * folds into the just scale.
+ */
+export function scaleOf(slots: readonly number[], rpm: number): DiscScale {
+  let ref = slots[0], best = Infinity;
+  for (const cand of slots) {
+    const cost = slots.reduce((sum, h) => { const [n, d] = fraction(h, cand); return sum + n + d; }, 0);
+    if (cost < best) { best = cost; ref = cand; }
+  }
+  const rings = slots.map((holes) => {
+    const [n, d] = fraction(holes, ref), hz = fanHarpHz(holes, rpm), nn = noteOf(hz);
+    return { holes, ratio: `${n}/${d}`, name: nn.name, oct: nn.oct, hz };
+  });
+  const just = slots.every((h) => { const [n, d] = folded(h, ref); return JUST.has(`${n}/${d}`); });
+  return { ref, just, rings };
+}

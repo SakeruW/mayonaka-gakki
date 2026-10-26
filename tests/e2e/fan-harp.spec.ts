@@ -3,17 +3,17 @@ import { brightness, collectErrors } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/#fan-harp");
-  await expect(page.locator(".fan-harp .vfd .row")).toContainText("rpm");   // the rig is running
+  await expect(page.locator(".fan-harp .base > .vfd .row")).toContainText("rpm");   // the rig is running
 });
 
-const note = (page: import("@playwright/test").Page) => page.locator(".fan-harp .vfd .note");
-const top = (page: import("@playwright/test").Page) => page.locator(".fan-harp .vfd .top");
+const note = (page: import("@playwright/test").Page) => page.locator(".fan-harp .base > .vfd .note");
+const top = (page: import("@playwright/test").Page) => page.locator(".fan-harp .base > .vfd .top");
 
 test("the fan draws and spins without errors", async ({ page }) => {
   const errors = collectErrors(page);
   await page.waitForTimeout(500);
   expect(await brightness(page, page.locator(".fan-harp .stage"))).toBeGreaterThan(0.1);
-  await expect(page.locator(".fan-harp .vfd .row")).toContainText("rpm");
+  await expect(page.locator(".fan-harp .base > .vfd .row")).toContainText("rpm");
   expect(errors).toEqual([]);
 });
 
@@ -112,7 +112,30 @@ test("the disc tray opens, closes on a tap elsewhere, and its parts have no visi
   await btn.click();
   await expect(btn).toHaveAttribute("aria-expanded", "true");
   await expect(tray).toBeVisible();
-  expect((await tray.innerText()).trim()).toBe("");
-  await page.locator(".fan-harp .vfd").click();
+  const stray = await tray.evaluate((root) => {
+    const out: string[] = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) if (n.textContent!.trim() && !n.parentElement?.closest(".vfd")) out.push(n.textContent!.trim());
+    return out;
+  });
+  expect(stray).toEqual([]);
+  await page.locator(".fan-harp .base > .vfd").click();
   await expect(tray).toBeHidden();
+});
+
+test("the tray reads the disc's scale and lights the ring that sounds", async ({ page }) => {
+  await page.getByRole("button", { name: "円盤を替える" }).click();
+  const scale = page.locator(".fan-harp .scale");
+  await expect(scale.locator(".top")).toContainText("純正律");
+  await expect(scale.locator(".top")).toContainText("1/1 = 24穴");
+  const rows = scale.locator("li");
+  await expect(rows).toHaveCount(8);
+  await expect(rows.nth(0)).toContainText("18穴3/4F3");          // at 中
+  await page.keyboard.press("v");                                // 強, without tapping outside the tray
+  await expect(rows.nth(1)).toContainText("24穴1/1C4261.6Hz");
+  await page.keyboard.down("5");
+  await expect(rows.nth(4)).toHaveClass(/on/, { timeout: 10_000 });
+  await page.keyboard.up("5");
+  await page.getByRole("button", { name: "Kira Killer" }).click();
+  await expect(scale.locator(".top")).not.toContainText("純正律");
 });

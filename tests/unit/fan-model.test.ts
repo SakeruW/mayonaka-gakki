@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PRESETS, SPEEDS, amplitudes, keyPick, light, parseRpm, parseSlots, ringWave, ringsOf, targetRpm, tune } from "../../src/instruments/fan-harp/model";
+import { PRESETS, SPEEDS, amplitudes, keyPick, light, parseRpm, parseSlots, ringWave, ringsOf, scaleOf, targetRpm, tune } from "../../src/instruments/fan-harp/model";
 
 const blade = PRESETS[0];
 
@@ -79,5 +79,23 @@ describe("disc settings", () => {
     expect(parseRpm("654")).toBe(654);
     expect(parseRpm("29")).toBeNull();
     expect(parseRpm("abc")).toBeNull();
+  });
+});
+
+describe("scaleOf", () => {
+  it("reads the C blade as just intonation on its 24-hole ring", () => {
+    const sc = scaleOf(PRESETS[0].slots, 654 * 24 / 24);
+    expect(sc.ref).toBe(24);
+    expect(sc.just).toBe(true);
+    expect(sc.rings.map((r) => r.ratio)).toEqual(["3/4", "1/1", "9/8", "5/4", "4/3", "3/2", "5/3", "2/1"]);
+    expect(sc.rings.map((r) => r.name + r.oct)).toEqual(["G3", "C4", "D4", "E4", "F4", "G4", "A4", "C5"]);
+  });
+  it("reads the pentatonic disc as just too", () => {
+    const sc = scaleOf(PRESETS[2].slots, 654);
+    expect(sc.just).toBe(true);
+    expect(sc.rings.map((r) => r.ratio)).toEqual(["1/1", "9/8", "5/4", "3/2", "5/3"]);
+  });
+  it("is not just when a ring falls outside the scale", () => {
+    expect(scaleOf([24, 25], 654).just).toBe(false);
   });
 });
