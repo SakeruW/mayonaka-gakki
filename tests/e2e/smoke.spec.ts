@@ -35,3 +35,16 @@ test("the nav has no visible text", async ({ page }) => {
   await page.goto("/");
   expect((await page.getByRole("navigation", { name: "楽器" }).innerText()).trim()).toBe("");
 });
+
+test("the icons are linked and served", async ({ page, request }) => {
+  await page.goto("/");
+  const hrefs = await page.locator('link[rel="icon"], link[rel="apple-touch-icon"]').evaluateAll((ls) => ls.map((l) => (l as HTMLLinkElement).href));
+  expect(hrefs).toHaveLength(3);
+  for (const [path, type] of [["favicon.svg", "image/svg+xml"], ["favicon.ico", "image/"], ["apple-touch-icon.png", "image/png"]] as const) {
+    const href = hrefs.find((h) => h.endsWith("/" + path))!;
+    expect(href, path).toBeTruthy();
+    const res = await request.get(href);
+    expect(res.status(), path).toBe(200);
+    expect(res.headers()["content-type"], path).toContain(type);
+  }
+});
