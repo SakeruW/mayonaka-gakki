@@ -3,10 +3,10 @@
 
 import { ensureAudio } from "../../engine/audio";
 import { onFrame } from "../../engine/loop";
-import { createTapeHead, loadTapeWorklet, type TapeHead } from "../../engine/tape";
+import { createTapeHead, type TapeHead } from "../../engine/tape";
 import workletUrl from "./tape-worklet.ts?worker&url";
 import {
-  HUB_R, SUPPLY_R, TAKEUP_R, TAPE_RATE, counter, demoLoop, handSpeed, headContact, hissLevel, motorTarget, reelOmega, tapeStep, toneHz,
+  HUB_R, SUPPLY_R, TAKEUP_R, TAPE_RATE, V0, counter, demoLoop, handSpeed, headContact, hissLevel, motorTarget, reelOmega, tapeStep, toneHz,
   type Transport,
 } from "./model";
 
@@ -17,6 +17,8 @@ export type MicState = "off" | "on" | "denied";
 type Pt = { x: number; y: number };
 interface Reel { c: Pt; pack: number; angle: number }
 interface Grab { reel: number; last: number; offset: number; omega: number; at: number }
+/** a finger holding the tape itself and pulling it across the head */
+interface Pull { id: number; last: number; vx: number; at: number; f: Pt }
 
 const ASPECT = 1.6;
 const REPORT_EVERY = 0.08;
@@ -26,6 +28,7 @@ export class TapeRig {
   private speed = 0;                 // tape speed, × recorded speed
   private reels: Reel[] = [{ c: { x: 0, y: 0 }, pack: SUPPLY_R, angle: 0 }, { c: { x: 0, y: 0 }, pack: TAKEUP_R, angle: 0.7 }];
   private grabs = new Map<number, Grab>();
+  private pull: Pull | null = null;
   private dip = { x: 0, amount: 0 };   // where a finger last knocked the tape
   private revs = 0;
   private ctx: CanvasRenderingContext2D;
@@ -67,9 +70,8 @@ export class TapeRig {
     const ac = ensureAudio();
     if (!ac || this.ac) return;
     this.ac = ac;
-    loadTapeWorklet(ac, workletUrl).then(() => {
-      if (!this.alive) return;
-      const head = createTapeHead(ac, { tape: demoLoop(TAPE_RATE), tapeRate: TAPE_RATE });
+    createTapeHead(ac, { tape: demoLoop(TAPE_RATE), tapeRate: TAPE_RATE, workletUrl }).then((head) => {
+      if (!this.alive) { head.dispose(); return; }
       // the playback amp: a little head saturation, the tape's speed-dependent top end, hiss, then the line out
       const c = new Float32Array(1024);
       for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; c[i] = Math.tanh(1.5 * x) / Math.tanh(1.5); }
@@ -91,7 +93,7 @@ export class TapeRig {
       this.head = head; this.tone = tone; this.hiss = hiss; this.meter = meter;
       this.nodes = [sat, tone, mix, comp, hissSrc, hissHp, hiss, meter];
       if (this.micNode) this.micNode.connect(head.node);
-    }, () => { /* no worklet support: the deck stays silent but still turns */ });
+    }, () => { /* no audio at all: the deck still turns */ });
   }
 
   private async openMic() {
@@ -113,17 +115,13 @@ export class TapeRig {
   tap(x?: number) {
     this.wake();
     this.dip = { x: x ?? 0.5, amount: 1 };
-    if (!this.grabs.size) this.speed += 1.8;
-    const ac = this.ac, head = this.head;
-    if (ac && head) {
-      const t = ac.currentTime, c = head.contact;
-      c.cancelScheduledValues(t); c.setValueAtTime(2.4, t); c.setTargetAtTime(this.contact(), t + 0.006, 0.035);
-    }
+    if (!this.grabs.size && !this.pull) this.speed += 1.8;
+    this.head?.knock(2.4, this.contact());
   }
 
   private contact() {
     if (this.recording) return 0;   // tape monitor off while recording, so the speakers can't feed back into the mic
-    return this.grabs.size ? 1 : headContact(this.s.transport);
+    return this.grabs.size || this.pull ? 1 : headContact(this.s.transport);
   }
 
   // ---------- hands on the reels and the tape ----------
@@ -141,11 +139,21 @@ export class TapeRig {
         const a = angleOn(i, p);
         this.grabs.set(e.pointerId, { reel: i, last: a, offset: this.reels[i].angle - a, omega: 0, at: performance.now() });
         cv.classList.add("down");
-      } else if (Math.abs(p.y - this.tapeY()) < 0.9 * this.U && p.x > 1.6 * this.U && p.x < 14.4 * this.U) {
+      } else if (!this.pull && Math.abs(p.y - this.tapeY()) < 0.9 * this.U && p.x > 1.6 * this.U && p.x < 14.4 * this.U) {
+        // touching the tape knocks it onto the head; keep hold and drag to pull it across the head
         this.tap(p.x / this.W);
+        try { cv.setPointerCapture(e.pointerId); } catch { /* fine without capture */ }
+        this.pull = { id: e.pointerId, last: p.x, vx: 0, at: performance.now(), f: p };
       }
     };
     const move = (e: PointerEvent) => {
+      const pl = this.pull;
+      if (pl && pl.id === e.pointerId) {
+        const now = performance.now(), p = local(e), dt = Math.max(0.004, (now - pl.at) / 1000);
+        pl.vx = pl.vx * 0.4 + ((p.x - pl.last) / dt) * 0.6;
+        pl.last = p.x; pl.at = now; pl.f = p;
+        return;
+      }
       const g = this.grabs.get(e.pointerId);
       if (!g) return;
       const now = performance.now(), a = angleOn(g.reel, local(e));
@@ -156,9 +164,12 @@ export class TapeRig {
       g.last = a; g.at = now;
       this.reels[g.reel].angle = a + g.offset;   // the reel stays under the finger
     };
-    const up = (e: PointerEvent) => { if (this.grabs.delete(e.pointerId) && !this.grabs.size) cv.classList.remove("down"); };
+    const up = (e: PointerEvent) => {
+      if (this.pull?.id === e.pointerId) this.pull = null;
+      if (this.grabs.delete(e.pointerId) && !this.grabs.size) cv.classList.remove("down");
+    };
     const menu = (e: Event) => e.preventDefault();
-    const release = () => { this.grabs.clear(); cv.classList.remove("down"); };
+    const release = () => { this.grabs.clear(); this.pull = null; cv.classList.remove("down"); };
     const hidden = () => { if (document.hidden) release(); };
     cv.addEventListener("pointerdown", down);
     cv.addEventListener("pointermove", move);
@@ -179,9 +190,13 @@ export class TapeRig {
   // ---------- loop ----------
   private frame = (dt: number, now: number) => {
     const { transport, fast, pitch } = this.s;
-    if (this.grabs.size) {
+    const g = [...this.grabs.values()].sort((a, b) => b.at - a.at)[0], pl = this.pull;
+    if (pl && (!g || pl.at >= g.at)) {
+      // a hand pulling the tape moves it across the head at the hand's speed: rightward is forward
+      const vx = now - pl.at > 60 ? 0 : pl.vx;
+      this.speed += (vx / (V0 * 3.6 * this.U) - this.speed) * (1 - Math.exp(-dt / 0.025));
+    } else if (g) {
       // the latest hand on a reel drives the tape; a hand held still holds the tape still
-      const g = [...this.grabs.values()].sort((a, b) => b.at - a.at)[0];
       const omega = now - g.at > 60 ? 0 : g.omega;
       const want = handSpeed(-omega, this.reels[g.reel].pack);   // turning a reel anticlockwise pulls the tape forward
       this.speed += (want - this.speed) * (1 - Math.exp(-dt / 0.03));
@@ -198,9 +213,9 @@ export class TapeRig {
     const ac = this.ac, head = this.head;
     if (ac && head) {
       const t = ac.currentTime;
-      head.rate.setTargetAtTime(this.speed, t, 0.006);
-      if (this.dip.amount < 0.3) head.contact.setTargetAtTime(this.contact(), t, 0.02);
-      head.flutter.setValueAtTime(transport === "play" && !this.grabs.size ? 1 : 0, t);
+      head.setRate(this.speed);
+      if (this.dip.amount < 0.3) head.setContact(this.contact());
+      head.setFlutter(transport === "play" && !this.grabs.size && !this.pull);
       head.setRecording(this.recording);
       this.tone?.frequency.setTargetAtTime(toneHz(this.speed), t, 0.02);
       this.hiss?.gain.setTargetAtTime(this.recording ? 0 : hissLevel(this.speed, this.contact()), t, 0.03);
@@ -279,7 +294,11 @@ export class TapeRig {
     c.strokeStyle = "#5a3a22"; c.lineWidth = 0.13 * U; c.lineCap = "round";
     c.beginPath(); c.moveTo(a.p1.x, a.p1.y); c.lineTo(a.p2.x, a.p2.y);
     c.arc(g1.x, g1.y, gr, Math.atan2(a.p2.y - g1.y, a.p2.x - g1.x), Math.PI / 2, true);
-    if (dip > 0.5) { c.lineTo(Math.max(g1.x, dx - 1.4 * U), ty); c.quadraticCurveTo(dx, ty + dip * 2, Math.min(g2.x, dx + 1.4 * U), ty); }
+    const f = this.pull?.f;
+    if (f && Math.abs(f.y - ty) > 2 * this.dpr) {
+      // pinched and pulled: the tape runs straight from each guide to the finger
+      c.lineTo(Math.max(g1.x + U, Math.min(g2.x - U, f.x)), ty + Math.max(-1.1 * U, Math.min(1.1 * U, f.y - ty)));
+    } else if (dip > 0.5) { c.lineTo(Math.max(g1.x, dx - 1.4 * U), ty); c.quadraticCurveTo(dx, ty + dip * 2, Math.min(g2.x, dx + 1.4 * U), ty); }
     c.lineTo(g2.x, ty);
     c.arc(g2.x, g2.y, gr, Math.PI / 2, Math.atan2(b.p2.y - g2.y, b.p2.x - g2.x), true);
     c.lineTo(b.p1.x, b.p1.y);
@@ -296,7 +315,7 @@ export class TapeRig {
       c.fillStyle = i === 1 && this.recording ? "#ff4f9a" : "#202426"; c.fillRect(x - 0.03 * U, ty - 0.18 * U, 0.06 * U, 0.2 * U);   // the gap
     });
     // capstan and pinch roller: the roller presses the tape to the capstan while playing
-    const cx = 10.75 * U, playing = this.s.transport === "play" && !this.grabs.size;
+    const cx = 10.75 * U, playing = this.s.transport === "play" && !this.grabs.size && !this.pull;
     c.fillStyle = "#d9dee0"; c.beginPath(); c.arc(cx, ty - 0.16 * U, 0.16 * U, 0, Math.PI * 2); c.fill();
     const py = ty + (playing ? 0.47 : 0.75) * U;
     c.fillStyle = "#0b0c0d"; c.beginPath(); c.arc(cx, py, 0.42 * U, 0, Math.PI * 2); c.fill();

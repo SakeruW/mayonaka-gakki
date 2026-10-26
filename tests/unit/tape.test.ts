@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readTape, wowFlutter, wrap } from "../../src/engine/tape";
+import { readTape, recordSample, runHead, wowFlutter, wrap } from "../../src/engine/tape";
 import {
   LOOP_BEATS, LOOP_BPM, SUPPLY_R, TAKEUP_R, counter, demoLoop, handSpeed, headContact, hissLevel, motorTarget, reelOmega, shiftCents,
   speedText, tapeStep, timeText, toneHz,
@@ -19,6 +19,28 @@ describe("tape head maths", () => {
   it("wobbles the speed by a fraction of a percent", () => {
     for (let t = 0; t < 2; t += 0.01) expect(Math.abs(wowFlutter(t, 1) - 1)).toBeLessThan(0.003);
     expect(wowFlutter(0.3, 0)).toBe(1);
+  });
+});
+
+describe("the head", () => {
+  const tape = Float32Array.from({ length: 100 }, (_, i) => i / 100);
+  const run = (rate: number, rec?: Float32Array) => {
+    const t = tape.slice(), out = new Float32Array(10), st = { pos: 20, t: 0 };
+    runHead(st, t, 1, out, rec, () => rate, () => 1, 0, !!rec, 44100);
+    return { out, st, t };
+  };
+  it("reads the tape forwards at 1×", () => {
+    const { out, st } = run(1);
+    expect(out[0]).toBeCloseTo(0.2, 5); expect(out[9]).toBeCloseTo(0.29, 5); expect(st.pos).toBe(30);
+  });
+  it("reads it backwards at −1×", () => {
+    const { out, st } = run(-1);
+    expect(out[1]).toBeCloseTo(0.19, 5); expect(st.pos).toBe(10);
+  });
+  it("records onto the tape just as it passes", () => {
+    const { t } = run(1, new Float32Array(10).fill(0.5));
+    expect(t[25]).toBeCloseTo(recordSample(0.5), 6);
+    expect(t[35]).toBeCloseTo(0.35, 6);
   });
 });
 

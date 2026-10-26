@@ -99,3 +99,32 @@ test("no visible text beyond readouts and the speed switch", async ({ page }) =>
   });
   expect(visible).toEqual([]);
 });
+
+test("pulling the tape drags it across the head both ways, and holding it still stops it", async ({ page }) => {
+  const box = (await page.locator(".open-reel .deck").boundingBox())!;
+  const U = box.width / 16, y = box.y + 8.95 * U;
+  let x = box.x + 5 * U;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.waitForTimeout(450);                       // the knock from touching it dies away
+  let fwd = 0;
+  for (let i = 0; i < 16; i++) { x += 0.25 * U; await page.mouse.move(x, y + 0.4 * U); if (i % 4 === 3) fwd = Math.max(fwd, await speedValue(page)); }
+  expect(fwd).toBeGreaterThan(0.2);                     // rightward is forward
+  await page.waitForTimeout(400);
+  await expect(speed(page)).toHaveText("0.00×");
+  let back = 0;
+  for (let i = 0; i < 16; i++) { x -= 0.25 * U; await page.mouse.move(x, y + 0.4 * U); if (i % 4 === 3) back = Math.min(back, await speedValue(page)); }
+  expect(back).toBeLessThan(-0.2);
+  await page.mouse.up();
+});
+
+test("the tape still plays where AudioWorklet isn't allowed (plain-http pages)", async ({ page }) => {
+  await page.addInitScript(() => { Object.defineProperty(BaseAudioContext.prototype, "audioWorklet", { get: () => undefined }); });
+  const errors = collectErrors(page);
+  await page.goto("/#open-reel");
+  await page.getByRole("button", { name: "再生" }).click();
+  await expect(page.getByRole("button", { name: "再生" })).toHaveAttribute("aria-pressed", "true");
+  await expect(speed(page)).toHaveText("1.00×");
+  await expect(page.locator(".open-reel .vfd .row")).not.toContainText("0:00.0");   // the main-thread head is reading the tape
+  expect(errors).toEqual([]);
+});

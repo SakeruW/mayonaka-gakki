@@ -7,7 +7,7 @@ Each one makes its sound the way the real hardware does.
 |---|---|
 | 真夜中扇風琴 — electric fan harp | Light from a bulb flickers through rings of holes in a spinning disc; a pick-shaped light sensor turns the flicker into sound. Pitch = holes × rpm / 60. |
 | 真夜中ブラウン管 — CRT TV drums | Your hand picks up each TV's picture line by line. More stripes on screen means a higher note. |
-| 真夜中オープンリール — open-reel tape | A tape loop runs across the playback head at whatever speed it moves: grab a reel to scratch it forwards or backwards, tap the tape to knock it against the head, or record onto it from your microphone. |
+| 真夜中オープンリール — open-reel tape | A tape loop runs across the playback head at whatever speed it moves: grab a reel to scratch it, pull the tape back and forth across the head, tap it to knock it against the head, or record onto it from your microphone. |
 
 The interface is in Japanese.
 
@@ -18,6 +18,7 @@ Requires Node.js 24 or later.
 ```bash
 npm install
 npm run dev        # dev server
+npm run dev:lan    # HTTPS on your network, for trying it on a phone
 npm test           # unit tests (Vitest)
 npm run build      # typecheck and build to dist/
 npm run test:e2e   # browser tests (Playwright) against the build
