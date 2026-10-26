@@ -10,13 +10,12 @@
 .fan-harp .vfd { border-radius: 10px; }
 
 .fan-harp .ctrl { display: grid; gap: 10px; align-content: center; justify-items: start; }
-.fan-harp .key { width: 52px; height: 60px; border-radius: 6px 6px 9px 9px; font-size: 21px; --key-ink: var(--plastic-ink); --key-on-ink: var(--plastic-ink);
-  box-shadow: inset 0 -7px 0 rgba(0,0,0,0.16), 0 3px 0 rgba(29,56,50,0.35); }
-.fan-harp .key.k0 { --key-bg: var(--key-off); --key-on-bg: var(--key-off); }
-.fan-harp .key.k1 { --key-bg: var(--key-low); --key-on-bg: var(--key-low); }
-.fan-harp .key.k2 { --key-bg: var(--key-mid); --key-on-bg: var(--key-mid); }
-.fan-harp .key.k3 { --key-bg: var(--key-high); --key-on-bg: var(--key-high); }
-.fan-harp .key[aria-pressed="true"] { transform: translateY(3px); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.2); filter: saturate(1.15) brightness(0.96); }
+.fan-harp .key { width: 52px; height: 60px; border-radius: 6px 6px 9px 9px; font-size: 21px; --key-ink: var(--plastic-ink); --key-on-ink: var(--plastic-ink); }
+.fan-harp .key.k0 { --key-bg: var(--key-off); --key-on-bg: var(--key-off); --key-side: #a9a493; }
+.fan-harp .key.k1 { --key-bg: var(--key-low); --key-on-bg: var(--key-low); --key-side: #6b97b6; }
+.fan-harp .key.k2 { --key-bg: var(--key-mid); --key-on-bg: var(--key-mid); --key-side: #72a983; }
+.fan-harp .key.k3 { --key-bg: var(--key-high); --key-on-bg: var(--key-high); --key-side: #bf7286; }
+.fan-harp .key[aria-pressed="true"] { filter: brightness(0.86) saturate(1.2); }
 .fan-harp .under { display: flex; gap: 14px; align-items: center; }
 .fan-harp .dimmer { --knob-face: radial-gradient(circle at 35% 30%, #fbfdfc, #c7d9d0 60%, #9fbbb0);
   --knob-shadow: 0 3px 0 rgba(29,56,50,0.35), inset 0 -3px 6px rgba(0,0,0,0.12); --knob-mark: var(--plastic-ink);
@@ -37,7 +36,7 @@
 .fan-harp .power[aria-pressed="false"] .mark-on { background: #7d837f; }
 .fan-harp .tray-btn { width: 40px; height: 40px; padding: 2px; border: none; border-radius: 50%; cursor: pointer; background: #2b3d38; display: grid;
   box-shadow: 0 2px 0 rgba(29,56,50,0.35); }
-.fan-harp .tray-btn[aria-expanded="true"] { box-shadow: 0 0 0 2px var(--plastic-ink); }
+.fan-harp .tray-btn[aria-expanded="true"] { transform: translateY(2px); box-shadow: inset 0 3px 6px rgba(0,0,0,0.6), 0 0 0 2px var(--plastic-ink); }
 .fan-harp .tray-btn svg { width: 100%; height: 100%; }
 
 /* drawn discs: dark plate, amber holes */
