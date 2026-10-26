@@ -235,11 +235,9 @@ export class FanRig {
     }
     // housing rim and hub cap (or the player's own picture)
     ctx.lineWidth = 5 * dpr; ctx.strokeStyle = "#b9c9c2"; ctx.beginPath(); ctx.arc(0, 0, R * 1.08, 0, Math.PI * 2); ctx.stroke();
-    const hub = this.hub, hr = hub ? R * 0.235 : R * 0.19;
-    const bg = ctx.createRadialGradient(-R * 0.05, -R * 0.06, 0, 0, 0, hr);
-    bg.addColorStop(0, "#eef6f1"); bg.addColorStop(1, "#b4cdc2");
-    ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(0, 0, hr, 0, Math.PI * 2); ctx.fill();
-    if (hub) {
+    const hub = this.hub, hr = R * 0.235;
+    if (!hub) this.drawHub(R, travel);
+    else {
       const iw = hub.naturalWidth, ih = hub.naturalHeight, sc = (2 * hr) / Math.min(iw, ih);
       ctx.save(); ctx.beginPath(); ctx.arc(0, 0, hr, 0, Math.PI * 2); ctx.clip();
       ctx.drawImage(hub, -iw * sc / 2, -ih * sc / 2, iw * sc, ih * sc); ctx.restore();
@@ -247,6 +245,73 @@ export class FanRig {
     }
     this.drawPick(R, this.contacts().length > 0);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  /**
+   * The middle of the fan, turning with the disc: a dark washer clamping the disc with three screws, a domed mint spinner
+   * cap with six petal ribs, and a chrome nut. At speed each part smears over the angle it turns in a 1/60 s exposure,
+   * like the holes do; the glint on the dome stays put.
+   */
+  private drawHub(R: number, travel: number) {
+    const { ctx, dpr } = this, TAU = Math.PI * 2;
+    // draw a pattern repeating every `period` radians, smeared over this frame's travel
+    const smeared = (period: number, paint: () => void) => {
+      // enough copies that neighbours overlap, so a part smears into an arc instead of strobing
+      const K = Math.max(1, Math.min(28, Math.ceil(travel / (period * 0.04))));
+      ctx.save(); ctx.globalAlpha = K === 1 ? 1 : Math.min(1, 2.4 / K);
+      for (let k = 0; k < K; k++) { ctx.save(); ctx.rotate(this.angle - travel * k / K); paint(); ctx.restore(); }
+      ctx.restore();
+    };
+    const washer = R * 0.245, cap = R * 0.165, nut = R * 0.042;
+
+    // washer: dark brushed steel ring clamping the disc
+    const wg = ctx.createLinearGradient(-washer, -washer, washer, washer);
+    wg.addColorStop(0, "#4a5553"); wg.addColorStop(0.5, "#252d2c"); wg.addColorStop(1, "#3a4442");
+    ctx.fillStyle = wg; ctx.beginPath(); ctx.arc(0, 0, washer, 0, TAU); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.14)"; ctx.lineWidth = dpr; ctx.beginPath(); ctx.arc(0, 0, washer - dpr, 0, TAU); ctx.stroke();
+    smeared(TAU / 3, () => {
+      for (let k = 0; k < 3; k++) {
+        const a = k * TAU / 3, x = Math.cos(a) * R * 0.205, y = Math.sin(a) * R * 0.205, sr = R * 0.021;
+        const sg = ctx.createRadialGradient(x - sr * 0.3, y - sr * 0.3, 0, x, y, sr);
+        sg.addColorStop(0, "#f2f5f4"); sg.addColorStop(1, "#7b8583");
+        ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(x, y, sr, 0, TAU); ctx.fill();
+        ctx.strokeStyle = "rgba(20,26,25,0.7)"; ctx.lineWidth = Math.max(1, sr * 0.28);
+        ctx.beginPath(); ctx.moveTo(x - Math.cos(a + 1) * sr * 0.7, y - Math.sin(a + 1) * sr * 0.7); ctx.lineTo(x + Math.cos(a + 1) * sr * 0.7, y + Math.sin(a + 1) * sr * 0.7); ctx.stroke();
+      }
+    });
+
+    // the spinner cap: a mint plastic dome, its shadow on the washer, six petal ribs
+    ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.beginPath(); ctx.arc(cap * 0.08, cap * 0.12, cap * 1.02, 0, TAU); ctx.fill();
+    const dome = ctx.createRadialGradient(-cap * 0.35, -cap * 0.4, cap * 0.05, 0, 0, cap);
+    dome.addColorStop(0, "#f6fbf8"); dome.addColorStop(0.55, "#cfe2d9"); dome.addColorStop(1, "#93b2a5");
+    ctx.fillStyle = dome; ctx.beginPath(); ctx.arc(0, 0, cap, 0, TAU); ctx.fill();
+    smeared(TAU / 6, () => {
+      for (let k = 0; k < 6; k++) {
+        const a = k * TAU / 6, w = 0.36;
+        ctx.beginPath(); ctx.moveTo(Math.cos(a) * nut * 1.4, Math.sin(a) * nut * 1.4);
+        ctx.quadraticCurveTo(Math.cos(a - w) * cap * 0.72, Math.sin(a - w) * cap * 0.72, Math.cos(a) * cap * 0.93, Math.sin(a) * cap * 0.93);
+        ctx.quadraticCurveTo(Math.cos(a + w) * cap * 0.72, Math.sin(a + w) * cap * 0.72, Math.cos(a) * nut * 1.4, Math.sin(a) * nut * 1.4);
+        ctx.fillStyle = "rgba(255,255,255,0.22)"; ctx.fill();
+        ctx.strokeStyle = "rgba(29,56,50,0.22)"; ctx.lineWidth = dpr; ctx.stroke();
+      }
+    });
+    ctx.strokeStyle = "#e9efec"; ctx.lineWidth = 1.6 * dpr; ctx.beginPath(); ctx.arc(0, 0, cap, 0, TAU); ctx.stroke();
+
+    // chrome nut, hexagonal
+    smeared(TAU / 6, () => {
+      ctx.beginPath();
+      for (let k = 0; k < 6; k++) { const a = k * TAU / 6; ctx[k ? "lineTo" : "moveTo"](Math.cos(a) * nut, Math.sin(a) * nut); }
+      ctx.closePath();
+      const ng = ctx.createLinearGradient(-nut, -nut, nut, nut);
+      ng.addColorStop(0, "#ffffff"); ng.addColorStop(0.5, "#9aa3a1"); ng.addColorStop(1, "#dfe5e3");
+      ctx.fillStyle = ng; ctx.fill();
+    });
+    ctx.fillStyle = "#56605e"; ctx.beginPath(); ctx.arc(0, 0, nut * 0.35, 0, TAU); ctx.fill();
+
+    // the room's light on the dome, which doesn't turn
+    const gl = ctx.createRadialGradient(-cap * 0.38, -cap * 0.42, 0, -cap * 0.38, -cap * 0.42, cap * 0.55);
+    gl.addColorStop(0, "rgba(255,255,255,0.7)"); gl.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(0, 0, cap, 0, TAU); ctx.fill();
   }
 
   /**
