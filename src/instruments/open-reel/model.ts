@@ -1,46 +1,27 @@
-// An open-reel deck as the Open Reel Ensemble plays it: a loop of tape across the heads, driven by the capstan,
-// or by a hand on a reel (scratching), or knocked against the head by a finger (tapping).
+// An open-reel deck played the Open Reel Ensemble way, with a rod: the tape runs off a single reel, round a guide,
+// across the heads, and is tied to the tip of a rod standing where the take-up reel would be. Rocking the rod drags
+// the tape across the head and back; a finger can also pull the tape or knock it against the head.
 // Tape speed s: 1 = the speed it was recorded at (19 cm/s), negative = backwards.
 
-import { centsToRatio } from "../../engine/pattern-wave";
-
-export type Transport = "stop" | "play" | "ff" | "rew";
-
-/** fast wind, × the recorded speed */
-export const SPOOL = 8;
-/** reel geometry, as fractions of the reel's flange radius: the hub, and how full each side's tape pack is */
-export const HUB_R = 0.3, SUPPLY_R = 0.8, TAKEUP_R = 0.56;
+/** reel geometry, as fractions of the reel's flange radius: the hub, and how full the reel is */
+export const HUB_R = 0.3, SUPPLY_R = 0.8;
 /** at s = 1 a pack of radius 0.68 turns half a revolution a second, about what a 7-inch reel does at 19 cm/s */
 export const V0 = 2 * Math.PI * 0.5 * 0.68;
-export const PITCH_RANGE = 200;   // cents either way on the pitch knob
-
-/** where the motor is taking the tape: play at 19 or 38 cm/s (×2), wound fast, or stopped */
-export function motorTarget(t: Transport, fast: boolean, pitchCents: number): number {
-  if (t === "play") return (fast ? 2 : 1) * centsToRatio(pitchCents);
-  if (t === "ff") return SPOOL;
-  if (t === "rew") return -SPOOL;
-  return 0;
-}
 
 /**
- * One step of the tape toward the motor's speed. STOP clamps the reel brakes: friction takes a steady bite out of the speed
- * as well as a proportional one, so the tape stops dead in about a third of a second and the pitch dives (the tape-stop).
- * The capstan and pinch roller pull it up to play speed quickly; fast wind spools up slowly.
+ * Nothing drives the tape: once the hands stop, the reel's brake and the tape's own tension stop it.
+ * Friction takes a steady bite as well as a proportional one, so it stops dead within a third of a second.
  */
-export function tapeStep(s: number, target: number, t: Transport, dt: number): number {
-  const tau = t === "stop" ? 0.16 : t === "play" ? 0.12 : 0.6;
-  let next = s + (target - s) * (1 - Math.exp(-dt / tau));
-  if (t === "stop") next -= Math.sign(next) * Math.min(Math.abs(next), 1.6 * dt);
-  return target === 0 && Math.abs(next) < 0.002 ? 0 : next;
+export function tapeStep(s: number, dt: number): number {
+  let next = s * Math.exp(-dt / 0.16);
+  next -= Math.sign(next) * Math.min(Math.abs(next), 1.6 * dt);
+  return Math.abs(next) < 0.002 ? 0 : next;
 }
 
 /** a reel turned by hand at ω rad/s drags the tape at this speed */
 export function handSpeed(omega: number, packR: number) { return omega * packR / V0; }
 /** and the tape turns a reel at this many rad/s */
 export function reelOmega(s: number, packR: number) { return s * V0 / packR; }
-
-/** how hard the tape presses on the heads: the lifters raise it off during fast wind, leaving just a little cue */
-export function headContact(t: Transport) { return t === "ff" || t === "rew" ? 0.12 : 1; }
 
 /** tape loses its top end as it slows: the head gap only resolves short wavelengths at speed */
 export function toneHz(s: number) { return Math.max(180, Math.min(16000, 16000 * Math.pow(Math.abs(s), 0.9))); }
@@ -112,3 +93,25 @@ export function demoLoop(sr = TAPE_RATE): Float32Array {
   if (peak > 0) for (let i = 0; i < n; i++) out[i] *= 0.7 / peak;
   return out;
 }
+
+// ---------- the lever (Open Reel Ensemble's rod) ----------
+
+/**
+ * A rod on a pivot at the bottom right of the deck, where the take-up reel would be, the tape's end tied to its tip.
+ * Rocking it drags the tape across the head and back. Positions are in deck units (the deck is 16 wide).
+ */
+export const LEVER = { pivotX: 13, pivotY: 11.25, length: 2.3, maxSwing: 0.55, gain: 2.4 } as const;
+
+/** where the rod's tip is for a swing angle (0 = upright, positive = leaning right) */
+export function leverTip(theta: number) {
+  return { x: LEVER.pivotX + LEVER.length * Math.sin(theta), y: LEVER.pivotY - LEVER.length * Math.cos(theta) };
+}
+
+/** the swing angle for a hand at (x, y), held within the rod's travel */
+export function leverAngle(x: number, y: number) {
+  const a = Math.atan2(x - LEVER.pivotX, LEVER.pivotY - y);
+  return Math.max(-LEVER.maxSwing, Math.min(LEVER.maxSwing, a));
+}
+
+/** tape speed from the tip moving sideways at v deck units/s: the tape tied to it is dragged across the head */
+export function leverSpeed(v: number) { return LEVER.gain * v / (V0 * 3.6); }

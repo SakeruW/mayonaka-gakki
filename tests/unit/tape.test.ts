@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readTape, recordSample, runHead, wowFlutter, wrap } from "../../src/engine/tape";
 import {
-  LOOP_BEATS, LOOP_BPM, SUPPLY_R, TAKEUP_R, counter, demoLoop, handSpeed, headContact, hissLevel, motorTarget, reelOmega, shiftCents,
+  LEVER, LOOP_BEATS, LOOP_BPM, SUPPLY_R, counter, demoLoop, handSpeed, hissLevel, leverAngle, leverSpeed, leverTip, reelOmega, shiftCents,
   speedText, tapeStep, timeText, toneHz,
 } from "../../src/instruments/open-reel/model";
 
@@ -44,41 +44,38 @@ describe("the head", () => {
   });
 });
 
-describe("transport", () => {
-  const run = (s: number, t: Parameters<typeof tapeStep>[2], target: number, secs: number) => {
-    for (let i = 0; i < secs * 60; i++) s = tapeStep(s, target, t, 1 / 60);
-    return s;
-  };
-  it("plays at 19 or 38 cm/s, bent by the pitch knob", () => {
-    expect(motorTarget("play", false, 0)).toBe(1);
-    expect(motorTarget("play", true, 0)).toBe(2);
-    expect(motorTarget("play", false, 1200)).toBeCloseTo(2, 6);
-    expect(motorTarget("ff", false, 0)).toBeGreaterThan(4);
-    expect(motorTarget("rew", false, 0)).toBeLessThan(-4);
-    expect(motorTarget("stop", true, 300)).toBe(0);
-  });
-  it("brakes to a dead stop in about a third of a second, with the pitch diving on the way", () => {
-    expect(run(1, "stop", 0, 0.1)).toBeLessThan(0.6);
-    expect(run(1, "stop", 0, 0.1)).toBeGreaterThan(0.1);
-    expect(run(1, "stop", 0, 0.4)).toBe(0);
-  });
-  it("comes up to play speed quickly and spools up to fast wind slowly", () => {
-    expect(run(0, "play", 1, 0.4)).toBeGreaterThan(0.95);
-    expect(run(0, "ff", 8, 0.4)).toBeLessThan(5);
-  });
-  it("lifts the tape off the heads in fast wind", () => {
-    expect(headContact("ff")).toBeLessThan(0.2);
-    expect(headContact("play")).toBe(1);
-    expect(headContact("stop")).toBe(1);
+describe("the tape on its own", () => {
+  const run = (s: number, secs: number) => { for (let i = 0; i < secs * 60; i++) s = tapeStep(s, 1 / 60); return s; };
+  it("stops dead within a third of a second once nothing moves it, either way", () => {
+    expect(run(1, 0.1)).toBeLessThan(0.6);
+    expect(run(1, 0.1)).toBeGreaterThan(0.1);
+    expect(run(1, 0.4)).toBe(0);
+    expect(run(-2, 0.6)).toBe(0);
   });
 });
 
-describe("reels", () => {
-  it("a hand on a reel and the tape agree on speed", () => {
-    for (const r of [SUPPLY_R, TAKEUP_R]) expect(handSpeed(reelOmega(1.3, r), r)).toBeCloseTo(1.3, 9);
+describe("the lever", () => {
+  it("stands upright with its tip on the tape line, and swings within its travel", () => {
+    expect(leverTip(0).y).toBeCloseTo(8.95, 6);
+    expect(leverTip(0).x).toBe(LEVER.pivotX);
+    expect(leverAngle(LEVER.pivotX + 10, LEVER.pivotY - 1)).toBe(LEVER.maxSwing);
+    expect(leverAngle(LEVER.pivotX - 10, LEVER.pivotY - 1)).toBe(-LEVER.maxSwing);
   });
-  it("the emptier reel spins faster for the same tape", () => {
-    expect(reelOmega(1, TAKEUP_R)).toBeGreaterThan(reelOmega(1, SUPPLY_R));
+  it("drags the tape forward when its tip moves right, back when it moves left", () => {
+    expect(leverSpeed(2)).toBeGreaterThan(0);
+    expect(leverSpeed(-2)).toBeCloseTo(-leverSpeed(2), 9);
+  });
+  it("a full swing runs most of a second of tape past the head", () => {
+    const travel = leverTip(LEVER.maxSwing).x - leverTip(-LEVER.maxSwing).x;   // deck units
+    const seconds = leverSpeed(travel);                                         // over one second of swinging
+    expect(seconds).toBeGreaterThan(0.5);
+    expect(seconds).toBeLessThan(1.2);
+  });
+});
+
+describe("the reel", () => {
+  it("a hand on the reel and the tape agree on speed", () => {
+    expect(handSpeed(reelOmega(1.3, SUPPLY_R), SUPPLY_R)).toBeCloseTo(1.3, 9);
   });
 });
 

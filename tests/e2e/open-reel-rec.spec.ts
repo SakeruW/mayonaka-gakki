@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { collectErrors } from "./helpers";
 
 // a fake microphone that Chromium supplies without asking
@@ -7,16 +7,20 @@ test.use({
   launchOptions: { args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] },
 });
 
-test("REC with PLAY records from the mic: the REC lamp lights only while tape is moving", async ({ page }) => {
+/** push the lever right with the keyboard while the lamp is checked */
+async function pushLever(page: Page) { await page.keyboard.down("ArrowRight"); }
+async function letGo(page: Page) { await page.keyboard.up("ArrowRight"); }
+
+test("REC records from the mic while the lever pushes the tape forward: the REC lamp lights only then", async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto("/#open-reel");
   const rec = page.getByRole("button", { name: "録音" }), led = page.locator(".open-reel .rec-led");
   await rec.click();
   await expect(rec).toHaveAttribute("aria-pressed", "true");
   await expect(led).not.toHaveClass(/on/);
-  await page.getByRole("button", { name: "再生" }).click();
+  await pushLever(page);
   await expect(led).toHaveClass(/on/);
-  await page.getByRole("button", { name: "停止" }).click();
+  await letGo(page);
   await expect(led).not.toHaveClass(/on/);
   await rec.click();
   await expect(rec).toHaveAttribute("aria-pressed", "false");
@@ -40,9 +44,10 @@ test("switching REC off releases the microphone, and arming again reopens it", a
   await expect.poll(live).toBe(0);                      // the browser's mic indicator goes off
   await rec.click();
   await expect.poll(live).toBe(1);
-  await page.getByRole("button", { name: "再生" }).click();
+  await pushLever(page);
   await expect(page.locator(".open-reel .rec-led")).toHaveClass(/on/);
   await rec.click();
   await expect.poll(live).toBe(0);
   await expect(page.locator(".open-reel .rec-led")).not.toHaveClass(/on/);
+  await letGo(page);
 });

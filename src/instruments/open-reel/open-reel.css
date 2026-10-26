@@ -1,6 +1,6 @@
 /* the deck's top plate takes the height the panel leaves; it all fits one screen */
 .open-reel .face { flex: 1 1 0; min-height: 170px; container-type: size; display: grid; place-items: center; }
-.open-reel .deck { width: min(100cqw, 160cqh); aspect-ratio: 1.6; display: block; touch-action: none; cursor: grab;
+.open-reel .deck { width: min(100cqw, 135cqh); aspect-ratio: 1.35; display: block; touch-action: none; cursor: grab;
   border-radius: 12px; box-shadow: 0 16px 36px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08); }
 .open-reel .deck.down { cursor: grabbing; }
 
@@ -27,10 +27,8 @@
   box-shadow: inset 0 0 0 1px rgba(0,0,0,0.5); }
 .open-reel .rec-led.on { background: #ff3b3b; box-shadow: 0 0 8px 2px rgba(255,60,60,0.8); }
 
-.open-reel .ctrl { display: grid; gap: 10px; justify-items: start; }
-/* transport: black piano keys with drawn symbols; play, wind and record latch down */
-.open-reel .transport { display: flex; gap: 5px; padding-bottom: 4px; }
-.open-reel .tkey { position: relative; width: 48px; height: 44px; border: none; border-radius: 4px 4px 7px 7px; cursor: pointer; display: grid; place-items: center;
+/* REC: a black piano key with a drawn red dot; it latches down while armed */
+.open-reel .tkey { position: relative; width: 56px; height: 50px; border: none; border-radius: 4px 4px 7px 7px; cursor: pointer; display: grid; place-items: center;
   color: #d9dfe1; background: linear-gradient(180deg, #3a3f41, #23272a);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -5px 0 rgba(0,0,0,0.35), 0 4px 0 #090b0c, 0 6px 10px rgba(0,0,0,0.45);
   transition: transform 70ms, box-shadow 70ms; }
@@ -38,33 +36,14 @@
 .open-reel .tkey[aria-pressed="true"] { transform: translateY(4px); background: linear-gradient(180deg, #2c3032, #1b1e20);
   box-shadow: inset 0 4px 8px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,0,0,0.4); }
 .open-reel .tkey i { display: block; position: relative; }
-.open-reel .tkey.play i { width: 0; height: 0; border-top: 7px solid transparent; border-bottom: 7px solid transparent; border-left: 11px solid currentColor; margin-left: 3px; }
-.open-reel .tkey.play[aria-pressed="true"] i { border-left-color: #7dffb0; filter: drop-shadow(0 0 4px rgba(125,255,176,0.8)); }
-.open-reel .tkey.stopkey i { width: 11px; height: 11px; background: currentColor; border-radius: 1px; }
-.open-reel .tkey.ff i, .open-reel .tkey.rew i { width: 18px; height: 12px; }
-.open-reel .tkey.ff i::before, .open-reel .tkey.ff i::after, .open-reel .tkey.rew i::before, .open-reel .tkey.rew i::after {
-  content: ""; position: absolute; top: 0; width: 0; height: 0; border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
-.open-reel .tkey.ff i::before { left: 0; border-left: 9px solid currentColor; }
-.open-reel .tkey.ff i::after { left: 9px; border-left: 9px solid currentColor; }
-.open-reel .tkey.rew i::before { right: 0; border-right: 9px solid currentColor; }
-.open-reel .tkey.rew i::after { right: 9px; border-right: 9px solid currentColor; }
-.open-reel .tkey.rec i { width: 12px; height: 12px; border-radius: 50%; background: #b3262a; }
+.open-reel .tkey.rec i { width: 14px; height: 14px; border-radius: 50%; background: #b3262a; }
 .open-reel .tkey.rec[aria-pressed="true"] i { background: #ff3b3b; box-shadow: 0 0 8px 2px rgba(255,60,60,0.7); }
-.open-reel .under { display: flex; align-items: center; gap: 12px; }
-.open-reel .pitch { --ring: var(--vfd); }
-.open-reel .speed { width: 54px; }
 
-@media (max-width: 760px) { .open-reel .panel { grid-template-columns: minmax(0, 1fr) auto; } .open-reel .ctrl { grid-column: 1 / -1; grid-template-columns: auto 1fr; align-items: center; } .open-reel .under { justify-content: flex-end; } }
 
-/* phones: VFD and VU side by side, then the keys, pitch and speed in one row */
+/* phones: VFD, VU and REC in one row */
 @media (max-width: 480px) {
   .open-reel .panel { padding: 10px; gap: 8px; }
   .open-reel .vu { width: 104px; height: 64px; }
   .open-reel .vu::before, .open-reel .vu::after { bottom: -104px; }
   .open-reel .needle { height: 80px; bottom: -26px; }
-  .open-reel .ctrl { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
-  .open-reel .transport { gap: 4px; }
-  .open-reel .tkey { width: 40px; height: 42px; }
-  .open-reel .under { gap: 0; }
-  .open-reel .speed { width: 44px; height: 30px; }
 }

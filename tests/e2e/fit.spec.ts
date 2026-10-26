@@ -8,7 +8,7 @@ const PHONES = [
 ];
 const PAGES = [
   { hash: "#fan-harp", controls: [".fan-harp .stage", ".fan-harp .base > .vfd", ".fan-harp .keys", ".fan-harp .dimmer .knob", ".fan-harp .power", ".fan-harp .tray-btn"] },
-  { hash: "#open-reel", controls: [".open-reel .deck", ".open-reel .vfd", ".open-reel .vu", ".open-reel .transport", ".open-reel .pitch .knob", ".open-reel .rocker"] },
+  { hash: "#open-reel", controls: [".open-reel .deck", ".open-reel .vfd", ".open-reel .vu", ".open-reel .tkey.rec"] },
   { hash: "#crt-drums", controls: [".crt-drums .rack", ".crt-drums .vfd", ".crt-drums .keys", ".crt-drums .vhold .knob", ".crt-drums .drive .knob", ".crt-drums .rocker"] },
 ];
 
