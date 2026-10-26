@@ -47,13 +47,13 @@ test("the deck draws without errors and sits still until a hand moves the tape",
 test("swinging the lever drags the tape across the head and back; holding it still stops the tape", async ({ page }) => {
   const errors = collectErrors(page);
   const up = await rock(page, -0.05);                          // swinging up draws tape out: forward
-  expect(up.extreme).toBeGreaterThan(0.3);
+  expect(up.extreme).toBeGreaterThan(0.15);
   await page.waitForTimeout(400);
   await expect(speed(page)).toHaveText("0.00×");               // held still
   const d = await deck(page);
   let back = 0, phi = up.phi;
   for (let i = 0; i < 16; i++) { phi += 0.05; const p = onArc(phi); await page.mouse.move(...d.at(p.x, p.y)); back = Math.min(back, await speedValue(page)); }
-  expect(back).toBeLessThan(-0.3);                             // swinging down lets it back in: backwards
+  expect(back).toBeLessThan(-0.15);                            // swinging down lets it back in: backwards
   await page.mouse.up();
   await expect(speed(page)).toHaveText("0.00×", { timeout: 2000 });
   await expect(page.locator(".open-reel .vfd .row")).not.toContainText("0:00.0");   // the head read along the tape

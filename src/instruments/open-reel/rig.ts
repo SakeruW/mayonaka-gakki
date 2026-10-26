@@ -20,6 +20,10 @@ type Pt = { x: number; y: number };
 interface LeverHand { id: number; at: number; v: number; offset: number; lastOut: number }
 
 const ASPECT = DECK.width / DECK.height;
+
+/** the built-in tape takes a moment to synthesise: made once, just after the page opens, and kept for every visit */
+let builtIn: Float32Array | null = null;
+const builtInTape = () => (builtIn ??= demoLoop(TAPE_RATE));
 const REPORT_EVERY = 0.08;
 const STALE_MS = 60;          // a hand that hasn't moved for this long is holding still
 
@@ -56,6 +60,9 @@ export class TapeRig {
     this.ctx = cv.getContext("2d")!;
     this.bindInput();
     this.cleanup.push(onFrame(this.frame));
+    // make the tape after the first frames are up, so the first touch of the lever doesn't wait for it
+    const t = setTimeout(() => { if (this.alive) builtInTape(); }, 120);
+    this.cleanup.push(() => clearTimeout(t));
   }
 
   update(next: DeckSettings) {
@@ -74,7 +81,7 @@ export class TapeRig {
     const ac = ensureAudio();
     if (!ac || this.ac) return;
     this.ac = ac;
-    createTapeHead(ac, { tape: demoLoop(TAPE_RATE), tapeRate: TAPE_RATE, workletUrl }).then((head) => {
+    createTapeHead(ac, { tape: builtInTape(), tapeRate: TAPE_RATE, workletUrl }).then((head) => {
       if (!this.alive) { head.dispose(); return; }
       // the playback amp: a little head saturation, the tape's speed-dependent top end, hiss, then the line out
       const c = new Float32Array(1024);

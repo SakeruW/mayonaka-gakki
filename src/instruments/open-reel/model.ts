@@ -58,52 +58,91 @@ export function shiftCents(s: number) { return Math.abs(s) < 0.01 ? null : Math.
 
 // ---------- what is on the tape when the deck is switched on ----------
 
-export const TAPE_RATE = 44100, LOOP_BPM = 100, LOOP_BEATS = 8;
+/** 20 bars at 100 bpm: 48 s of tape before it comes round again. Stored at 32 kHz; the head plays it at any rate. */
+export const TAPE_RATE = 32000, TAPE_BPM = 100, TAPE_BARS = 20;
+export const TAPE_SECONDS = TAPE_BARS * 4 * 60 / TAPE_BPM;
 
 const midiHz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
 /**
- * Two bars at 100 bpm, synthesised so nothing borrowed is on the tape: kick, snare, hats, a bass line and sung "ah" stabs
- * (harmonics shaped by the formants of /a/), the kind of material that scratches well.
+ * A short piece in four parts, synthesised so nothing borrowed is on the tape: kick, snare, hats, a soft-edged bass, and
+ * sung "ah" lines (harmonics shaped by the formants of /a/), the kind of material that scratches well.
+ *   bars 1-4   intro: the beat comes in a piece at a time over the bass
+ *   bars 5-12  A: the full groove with the "ah" phrase
+ *   bars 13-16 B: new chords, a longer sung line, busier hats
+ *   bars 17-20 A': the groove again, the phrase answered higher, a snare fill to finish
  */
 export function demoLoop(sr = TAPE_RATE): Float32Array {
-  const beat = 60 / LOOP_BPM, n = Math.round(sr * beat * LOOP_BEATS), out = new Float32Array(n);
+  const beat = 60 / TAPE_BPM, n = Math.round(sr * TAPE_SECONDS), out = new Float32Array(n);
   let seed = 7;
   const noise = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296) * 2 - 1;
-  const at = (b: number) => Math.round(b * beat * sr);
+  const at = (bar: number, b: number) => Math.round(((bar - 1) * 4 + b) * beat * sr);
   const add = (start: number, dur: number, f: (t: number) => number) => {
     const len = Math.round(dur * sr);
     for (let i = 0; i < len; i++) out[(start + i) % n] += f(i / sr);
   };
-
-  for (const b of [0, 2, 3.5, 4, 6, 7.5]) add(at(b), 0.45, (t) =>
-    0.9 * Math.exp(-7 * t) * Math.sin(2 * Math.PI * (48 * t + (110 / 30) * (1 - Math.exp(-30 * t)))));
-  for (const b of [1, 3, 5, 7, 7.75]) {
+  const kick = (bar: number, b: number, v = 0.9) => add(at(bar, b), 0.45, (t) => v * Math.exp(-7 * t) * Math.sin(2 * Math.PI * (48 * t + (110 / 30) * (1 - Math.exp(-30 * t)))));
+  const snare = (bar: number, b: number, v = 1) => {
     let last = 0;
-    add(at(b), 0.3, (t) => { const w = noise(), hp = w - last; last = w; return Math.exp(-16 * t) * (0.38 * hp + 0.25 * Math.sin(2 * Math.PI * 185 * t) * Math.exp(-20 * t)); });
-  }
-  for (let b = 0; b < LOOP_BEATS; b += 0.5) {
+    add(at(bar, b), 0.3, (t) => { const w = noise(), hp = w - last; last = w; return v * Math.exp(-16 * t) * (0.38 * hp + 0.25 * Math.sin(2 * Math.PI * 185 * t) * Math.exp(-20 * t)); });
+  };
+  const hat = (bar: number, b: number, v = 0.12) => {
     let last = 0;
-    add(at(b), 0.06, (t) => { const w = noise(), hp = w - last; last = w; return 0.12 * Math.exp(-70 * t) * hp; });
-  }
-  // bass: C2 C2 E♭2 F2 | G1 G1 B♭1 C2, a soft-edged saw
-  [36, 36, 39, 41, 31, 31, 34, 36].forEach((m, b) => {
-    const f = midiHz(m);
+    add(at(bar, b), 0.06, (t) => { const w = noise(), hp = w - last; last = w; return v * Math.exp(-70 * t) * hp; });
+  };
+  const bass = (bar: number, b: number, m: number, beats: number) => {
+    const f = midiHz(m), dur = beats * beat * 0.9;
     let y = 0;
-    add(at(b), beat * 0.9, (t) => { const saw = 2 * ((f * t) % 1) - 1; y += 0.08 * (saw - y); return 0.5 * y * Math.min(1, t * 200) * Math.exp(-2.2 * t); });
-  });
+    add(at(bar, b), dur, (t) => { const saw = 2 * ((f * t) % 1) - 1; y += 0.08 * (saw - y); return 0.5 * y * Math.min(1, t * 200) * Math.min(1, (dur - t) * 30); });
+  };
   // "ah": harmonics of the sung note, each weighted by how close it sits to the /a/ formants
   const formant = (h: number) => Math.exp(-(((h - 730) / 120) ** 2)) + 0.7 * Math.exp(-(((h - 1090) / 140) ** 2)) + 0.25 * Math.exp(-(((h - 2440) / 220) ** 2));
-  for (const [b, m, dur] of [[0.5, 67, 0.4], [2.5, 63, 0.4], [4.5, 65, 0.4], [6.5, 60, 0.75]] as const) {
+  const ah = (bar: number, b: number, m: number, dur: number) => {
     const f0 = midiHz(m), parts: [number, number][] = [];
     for (let k = 1; k * f0 < 5000; k++) parts.push([k, (0.15 + formant(k * f0)) / k ** 0.6]);
-    add(at(b), dur, (t) => {
-      const vib = 1 + 0.006 * Math.sin(2 * Math.PI * 5.5 * t), env = Math.min(1, t * 40) * Math.min(1, (dur - t) * 12);
-      let s = 0;
-      for (const [k, a] of parts) s += a * Math.sin(2 * Math.PI * k * f0 * vib * t);
-      return 0.22 * env * s;
+    add(at(bar, b), dur, (t) => {
+      const vib = 1 + 0.006 * Math.sin(2 * Math.PI * 5.5 * t) * Math.min(1, t * 3), env = Math.min(1, t * 40) * Math.min(1, (dur - t) * 12);
+      let x = 0;
+      for (const [k, a] of parts) x += a * Math.sin(2 * Math.PI * k * f0 * vib * t);
+      return 0.22 * env * x;
     });
-  }
+  };
+
+  // the groove, two bars at a time, as in the original loop
+  const groove = (bar: number, { snares = true, hats = true, fill = false } = {}) => {
+    for (const b of [0, 2, 3.5]) kick(bar, b);
+    for (const b of [0, 2]) kick(bar + 1, b);
+    if (!fill) kick(bar + 1, 3.5);
+    if (snares) { for (const b of [1, 3]) { snare(bar, b); snare(bar + 1, b); } if (!fill) snare(bar + 1, 3.75); }
+    if (hats) for (let b = 0; b < 8; b += 0.5) hat(bar + Math.floor(b / 4), b % 4);
+    if (fill) for (const b of [3, 3.25, 3.5, 3.75]) snare(bar + 1, b, 0.6 + 0.15 * (b - 3) * 4);
+  };
+  // bass lines, one note a beat: C C E♭ F | G G B♭ C, and for B: A♭ A♭ B♭ B♭ | C C G G
+  const lineA = [36, 36, 39, 41, 31, 31, 34, 36], lineB = [32, 32, 34, 34, 36, 36, 31, 31];
+  const bassLine = (bar: number, line: number[]) => line.forEach((m, i) => bass(bar + Math.floor(i / 4), i % 4, m, 1));
+  // the "ah" phrase: G4 on the and of 1, E♭4, F4, then C4 held; and its answer an octave-ish higher
+  const phrase = (bar: number, up = 0) => {
+    for (const [b, m, d] of [[0.5, 67, 0.4], [2.5, 63, 0.4], [4.5, 65, 0.4], [6.5, 60, 0.75]] as const) ah(bar + Math.floor(b / 4), b % 4, m + up, d);
+  };
+
+  // intro: bass and kick, then hats, then the full beat
+  for (const bar of [1, 3]) bassLine(bar, lineA);
+  for (const b of [0, 2]) { kick(1, b); kick(2, b); }
+  for (let b = 0; b < 8; b += 0.5) hat(3 + Math.floor(b / 4), b % 4, 0.08);
+  for (const b of [0, 2, 3.5]) kick(3, b);
+  for (const b of [0, 2]) kick(4, b);
+  snare(4, 3); snare(4, 3.5, 0.7);
+  // A
+  for (const bar of [5, 7, 9, 11]) { groove(bar); bassLine(bar, lineA); }
+  for (const bar of [5, 9]) phrase(bar);
+  phrase(7, 0); ah(12, 2, 72, 0.4);
+  // B: the beat thins to kick and hats while a longer line sings over new chords
+  for (const bar of [13, 15]) { groove(bar, { snares: bar === 15 }); bassLine(bar, lineB); }
+  for (let b = 0; b < 16; b += 0.25) hat(13 + Math.floor(b / 4), b % 4, 0.05);
+  for (const [bar, b, m, d] of [[13, 0, 68, 1.1], [13, 2, 67, 1.1], [14, 0, 65, 1.6], [15, 0, 63, 1.1], [15, 2, 65, 1.1], [16, 0, 67, 1.7]] as const) ah(bar, b, m, d);
+  // A': the groove back, the phrase and then its answer up a fourth, a fill into the top of the tape
+  for (const bar of [17, 19]) { groove(bar, { fill: bar === 19 }); bassLine(bar, lineA); }
+  phrase(17); phrase(19, 5);
 
   let peak = 0;
   for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(out[i]));

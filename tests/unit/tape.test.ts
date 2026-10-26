@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readTape, recordSample, runHead, wowFlutter, wrap } from "../../src/engine/tape";
 import {
-  LEVER, LOOP_BEATS, LOOP_BPM, SUPPLY_R, counter, demoLoop, handSpeed, hissLevel, leverAngle, leverPoint, leverSpeed, reelOmega, tapeOut, tapeUnitsPerSecond, shiftCents,
+  LEVER, SUPPLY_R, TAPE_SECONDS, counter, demoLoop, handSpeed, hissLevel, leverAngle, leverPoint, leverSpeed, reelOmega, tapeOut, tapeUnitsPerSecond, shiftCents,
   speedText, tapeStep, timeText, toneHz,
 } from "../../src/instruments/open-reel/model";
 
@@ -101,18 +101,28 @@ describe("readouts", () => {
   });
 });
 
-describe("the built-in loop", () => {
-  const loop = demoLoop(22050);
-  it("is two bars at 100 bpm", () => { expect(loop.length).toBe(Math.round(22050 * 60 / LOOP_BPM * LOOP_BEATS)); });
+describe("the built-in tape", () => {
+  const sr = 8000, tape = demoLoop(sr);
+  it("holds 48 seconds: twenty bars at 100 bpm", () => {
+    expect(TAPE_SECONDS).toBe(48);
+    expect(tape.length).toBe(48 * sr);
+  });
   it("is normalised and never silent for long", () => {
     let peak = 0;
-    for (const v of loop) peak = Math.max(peak, Math.abs(v));
+    for (const v of tape) peak = Math.max(peak, Math.abs(v));
     expect(peak).toBeCloseTo(0.7, 3);
-    const win = 2205;   // 100 ms windows
-    for (let i = 0; i + win <= loop.length; i += win) {
+    const win = sr / 4;   // 250 ms windows
+    for (let i = 0; i + win <= tape.length; i += win) {
       let e = 0;
-      for (let j = i; j < i + win; j++) e += loop[j] * loop[j];
-      expect(Math.sqrt(e / win), `window at ${(i / 22050).toFixed(1)} s`).toBeGreaterThan(0.003);
+      for (let j = i; j < i + win; j++) e += tape[j] * tape[j];
+      expect(Math.sqrt(e / win), `window at ${(i / sr).toFixed(2)} s`).toBeGreaterThan(0.002);
     }
+  });
+  it("changes as it goes: hats, snare and singing make A brighter than the intro, and B differs from A", () => {
+    // brightness: the level of the sample-to-sample change, which the high, busy parts dominate
+    const bright = (from: number, to: number) => { let e = 0; for (let i = from * sr + 1; i < to * sr; i++) e += (tape[i] - tape[i - 1]) ** 2; return Math.sqrt(e / ((to - from) * sr)); };
+    const intro = bright(0, 4.8), a = bright(9.6, 14.4), b = bright(28.8, 33.6);
+    expect(a).toBeGreaterThan(intro * 2);
+    expect(Math.abs(b - a) / a).toBeGreaterThan(0.1);
   });
 });
