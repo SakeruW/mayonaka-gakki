@@ -1,14 +1,32 @@
 import { useEffect, useRef, useState } from "react";
+import { fanHarpHz } from "../../engine/pattern-wave";
 import { Knob, pitchRing } from "../../ui/Knob";
 import { Vfd, signed } from "../../ui/Vfd";
 import { Keys, Rocker } from "../../ui/controls";
 import { useCompact } from "../../ui/useCompact";
-import { DUTY, PRESETS, SPEED_KEYS, parseRpm, parseSlots, ringsOf, scaleOf, targetRpm } from "./model";
+import { DUTY, MAX_RINGS, NOTE_CHOICES, SPEED_KEYS, TEMPLATES, fitDisc, noteHz, ringsOf, scaleOf, type Disc } from "./model";
 import { FanRig, type TunerState } from "./rig";
 import "./fan-harp.css";
 
-const HUB_KEY = "fanharp-hub";
+const HUB_KEY = "fanharp-hub", DISCS_KEY = "fanharp-discs", MAX_CUSTOM = 6;
+const NEW_DISC_NOTES = ["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"];
+
 function loadHub() { try { return localStorage.getItem(HUB_KEY); } catch { return null; } }
+/** discs the player made, rebuilt from their notes; kept only in this browser */
+function loadCustom(): Disc[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DISCS_KEY) ?? "[]") as { id: string; notes: string[] }[];
+    return raw.filter((d) => Array.isArray(d.notes) && d.notes.length && d.notes.every((n) => NOTE_CHOICES.includes(n)))
+              .slice(0, MAX_CUSTOM).map((d, i) => makeDisc(d.id, i, d.notes));
+  } catch { return []; }
+}
+function saveCustom(discs: Disc[]) {
+  try { localStorage.setItem(DISCS_KEY, JSON.stringify(discs.map((d) => ({ id: d.id, notes: d.notes })))); } catch { /* not kept after a reload */ }
+}
+function makeDisc(id: string, i: number, notes: string[]): Disc {
+  const fit = fitDisc(notes);
+  return { id, label: `自作${i + 1}`, notes, slots: fit.slots, rpm: fit.rpm };
+}
 
 /** a disc drawn small: each ring's holes as a dashed band */
 function DiscThumb({ slots }: { slots: readonly number[] }) {
@@ -34,19 +52,18 @@ export default function FanHarp({ title }: { title: string }) {
   const partsRef = useRef<HTMLElement>(null);
   const trayBtnRef = useRef<HTMLButtonElement>(null);
   const compact = useCompact();
-  const [slots, setSlots] = useState<number[]>(() => PRESETS[0].slots.slice());
-  const [base, setBase] = useState<number>(PRESETS[0].rpm);
+  const [custom, setCustom] = useState<Disc[]>(loadCustom);
+  const [discId, setDiscId] = useState(TEMPLATES[0].id);
   const [speed, setSpeed] = useState(2);
   const [bend, setBend] = useState(0);
   const [bulb, setBulb] = useState(true);
-  const [preset, setPreset] = useState<string>(PRESETS[0].id);
-  const [slotsText, setSlotsText] = useState(PRESETS[0].slots.join(", "));
-  const [rpmText, setRpmText] = useState(String(PRESETS[0].rpm));
   const [hub, setHub] = useState<string | null>(loadHub);
   const [hubBad, setHubBad] = useState(false);
   const [tray, setTray] = useState(false);
   const [tuner, setTuner] = useState<TunerState>({ rpm: 0, reading: null });
 
+  const disc = [...TEMPLATES, ...custom].find((d) => d.id === discId) ?? TEMPLATES[0];
+  const slots = disc.slots, base = disc.rpm;
   const settings = { slots, base, speed, bend, bulb };
   const settingsRef = useRef(settings);
   const ringsRef = useRef(slots.length);
@@ -84,7 +101,8 @@ export default function FanHarp({ title }: { title: string }) {
   // keyboard: 1–9 put the pick on a ring, Z X C V speed keys, ←→ dimmer
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement | null)?.tagName === "INPUT" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || e.metaKey || e.ctrlKey || e.altKey) return;
       const d = parseInt(e.key, 10);
       if (d >= 1 && d <= 9) { if (!e.repeat && d <= ringsRef.current) rigRef.current?.keyDown(d - 1); e.preventDefault(); return; }
       const k = "zxcv".indexOf(e.key.toLowerCase());
@@ -98,16 +116,22 @@ export default function FanHarp({ title }: { title: string }) {
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
   }, []);
 
-  const choosePreset = (p: (typeof PRESETS)[number]) => {
-    setSlots(p.slots.slice()); setBase(p.rpm); setPreset(p.id);
-    setSlotsText(p.slots.join(", ")); setRpmText(String(p.rpm));
+  // ---------- custom discs: pick a note per ring; holes and the 強 speed follow ----------
+  const keep = (next: Disc[]) => { const named = next.map((d, i) => ({ ...d, label: `自作${i + 1}` })); setCustom(named); saveCustom(named); };
+  const newDisc = () => {
+    if (custom.length >= MAX_CUSTOM) return;
+    const d = makeDisc("my-" + Date.now().toString(36), custom.length, NEW_DISC_NOTES);
+    keep([...custom, d]); setDiscId(d.id);
   };
-  const slotsOk = parseSlots(slotsText) !== null, rpmOk = parseRpm(rpmText) !== null;
-  const commitSlots = () => {
-    const s = parseSlots(slotsText);
-    if (s && s.join() !== slots.join()) { setSlots(s); setPreset(PRESETS.find((p) => p.slots.join() === s.join())?.id ?? ""); }
+  const editNotes = (notes: string[]) => keep(custom.map((d, i) => (d.id === disc.id ? makeDisc(d.id, i, notes) : d)));
+  const setNote = (i: number, note: string) => editNotes(disc.notes!.map((n, k) => (k === i ? note : n)));
+  const addRing = () => {
+    const notes = disc.notes!, last = NOTE_CHOICES.indexOf(notes[notes.length - 1]);
+    if (notes.length < MAX_RINGS) editNotes([...notes, NOTE_CHOICES[Math.min(NOTE_CHOICES.length - 1, last + 2)]]);
   };
-  const commitRpm = () => { const v = parseRpm(rpmText); if (v !== null) setBase(v); };
+  const removeRing = (i: number) => { if (disc.notes!.length > 1) editNotes(disc.notes!.filter((_, k) => k !== i)); };
+  const deleteDisc = () => { keep(custom.filter((d) => d.id !== disc.id)); setDiscId(TEMPLATES[0].id); };
+
   const pickHub = (f: File | undefined) => {
     if (!f) return;
     if (!/^image\//.test(f.type)) { setHubBad(true); return; }
@@ -126,8 +150,8 @@ export default function FanHarp({ title }: { title: string }) {
   };
 
   const r = tuner.reading;
-  // the tray reads the disc at the current speed key (切 shows 強)
-  const scale = scaleOf(slots, targetRpm(base, speed === 0 ? 3 : speed, bend));
+  // the tray describes the disc itself, at its 強 speed; the main VFD shows what is sounding now
+  const scale = scaleOf(slots, base);
   const wake = () => rigRef.current?.wake();
 
   return (
@@ -158,11 +182,13 @@ export default function FanHarp({ title }: { title: string }) {
         <section ref={partsRef} className="parts" aria-label="円盤" hidden={!tray}>
           <div className="parts-top">
             <div className="discs" role="group" aria-label="円盤の種類">
-              {PRESETS.map((p) => (
-                <button key={p.id} type="button" className="disc" aria-pressed={preset === p.id} aria-label={p.label} onClick={() => choosePreset(p)}>
-                  <DiscThumb slots={p.slots} />
+              {[...TEMPLATES, ...custom].map((d) => (
+                <button key={d.id} type="button" className={"disc" + (d.notes ? " mine" : "")} aria-pressed={disc.id === d.id} aria-label={d.label}
+                        onClick={() => setDiscId(d.id)}>
+                  <DiscThumb slots={d.slots} />
                 </button>
               ))}
+              {custom.length < MAX_CUSTOM && <button type="button" className="disc new" aria-label="円盤を作る" onClick={newDisc} />}
             </div>
             <div className="hubs">
               <button type="button" className="hubpick" aria-label="ハブの写真を選ぶ" aria-invalid={hubBad}
@@ -172,22 +198,30 @@ export default function FanHarp({ title }: { title: string }) {
             </div>
           </div>
           <div className="vfd scale" aria-label="円盤の音階">
-            <div className="top"><span>{scale.just ? "純正律" : ""}</span><span>{`1/1 = ${scale.ref}穴`}</span></div>
+            <div className="top">
+              <span>{scale.just ? "純正律" : ""}</span>
+              <span>{`強 ${base}rpm`}{disc.notes && <button type="button" className="x" aria-label="この円盤を消す" onClick={deleteDisc} />}</span>
+            </div>
             <ol>
-              {scale.rings.map((g, i) => (
-                <li key={i} className={r?.best === i ? "on" : undefined}>
-                  <span>{i + 1}</span><span>{g.holes}穴</span><span>{g.ratio}</span><span>{g.name}{g.oct}</span><span>{g.hz.toFixed(1)}Hz</span>
-                </li>
-              ))}
+              {scale.rings.map((g, i) => {
+                const want = disc.notes?.[i];
+                const off = want ? Math.round(1200 * Math.log2(fanHarpHz(g.holes, base) / noteHz(want))) : g.cents;
+                return (
+                  <li key={i} className={r?.best === i ? "on" : undefined}>
+                    <span>{i + 1}</span><span>{g.holes}穴</span><span>{g.ratio}</span>
+                    {want
+                      ? <select value={want} aria-label={`${i + 1}輪目の音`} onChange={(e) => setNote(i, e.target.value)}>
+                          {NOTE_CHOICES.map((n) => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      : <span>{g.name}{g.oct}</span>}
+                    <span>{signed(off, "¢")}</span>
+                    <span>{g.hz.toFixed(1)}Hz</span>
+                    {want && <button type="button" className="x" aria-label={`${i + 1}輪目を外す`} disabled={slots.length <= 1} onClick={() => removeRing(i)} />}
+                  </li>
+                );
+              })}
             </ol>
-          </div>
-          <div className="parts-inputs">
-            <input className="slots" type="text" value={slotsText} spellCheck={false} autoComplete="off" inputMode="numeric"
-                   aria-label="穴の数（内側から）" aria-invalid={!slotsOk}
-                   onChange={(e) => setSlotsText(e.target.value)} onBlur={commitSlots} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
-            <input className="rpm" type="number" min={30} max={3000} step={1} value={rpmText} inputMode="numeric"
-                   aria-label="強の回転数" aria-invalid={!rpmOk}
-                   onChange={(e) => setRpmText(e.target.value)} onBlur={commitRpm} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+            {disc.notes && slots.length < MAX_RINGS && <button type="button" className="plus" aria-label="輪を足す" onClick={addRing} />}
           </div>
         </section>
       </div>

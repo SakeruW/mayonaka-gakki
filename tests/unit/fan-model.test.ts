@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { PRESETS, SPEEDS, amplitudes, keyPick, light, parseRpm, parseSlots, motorStep, ringWave, ringsOf, scaleOf, targetRpm, tune } from "../../src/instruments/fan-harp/model";
+import { NOTE_CHOICES, SPEEDS, TEMPLATES, amplitudes, fitDisc, keyPick, light, motorStep, noteHz, ringWave, ringsOf, scaleOf, targetRpm, tune } from "../../src/instruments/fan-harp/model";
 
-const blade = PRESETS[0];
+const blade = TEMPLATES[0];
 
 describe("rings", () => {
   it("fit between the hub and the rim without overlapping", () => {
@@ -67,33 +67,40 @@ describe("ring waveform", () => {
   });
 });
 
-describe("disc settings", () => {
-  it("parses hole counts, inner ring first", () => {
-    expect(parseSlots("18, 24 27、30")).toEqual([18, 24, 27, 30]);
-    expect(parseSlots("")).toBeNull();
-    expect(parseSlots("1 2 3 4 5 6 7 8 9 10")).toBeNull();
-    expect(parseSlots("18, 2.5")).toBeNull();
-    expect(parseSlots("0")).toBeNull();
+describe("notes to a disc", () => {
+  it("offers A2 to C6", () => {
+    expect(NOTE_CHOICES[0]).toBe("A2");
+    expect(NOTE_CHOICES[NOTE_CHOICES.length - 1]).toBe("C6");
+    expect(NOTE_CHOICES).toContain("G3");
   });
-  it("accepts 30–3000 rpm", () => {
-    expect(parseRpm("654")).toBe(654);
-    expect(parseRpm("29")).toBeNull();
-    expect(parseRpm("abc")).toBeNull();
+  it("knows each note's pitch", () => {
+    expect(noteHz("A4")).toBeCloseTo(440, 6);
+    expect(noteHz("C4")).toBeCloseTo(261.63, 2);
+    expect(noteHz("B♭3")).toBeCloseTo(233.08, 2);
+  });
+  it("finds whole hole counts and a speed that land near every chosen note", () => {
+    for (const notes of [["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"], ["A2", "G3", "C4"], ["C6"]]) {
+      const fit = fitDisc(notes);
+      expect(fit.slots).toHaveLength(notes.length);
+      fit.slots.forEach((n) => { expect(Number.isInteger(n)).toBe(true); expect(n).toBeGreaterThanOrEqual(4); expect(n).toBeLessThanOrEqual(120); });
+      expect(Math.max(...fit.cents.map(Math.abs))).toBeLessThan(10);
+    }
   });
 });
 
 describe("scaleOf", () => {
   it("reads the C blade as just intonation on its 24-hole ring", () => {
-    const sc = scaleOf(PRESETS[0].slots, 654 * 24 / 24);
+    const sc = scaleOf(TEMPLATES[0].slots, 654);
     expect(sc.ref).toBe(24);
     expect(sc.just).toBe(true);
     expect(sc.rings.map((r) => r.ratio)).toEqual(["3/4", "1/1", "9/8", "5/4", "4/3", "3/2", "5/3", "2/1"]);
     expect(sc.rings.map((r) => r.name + r.oct)).toEqual(["G3", "C4", "D4", "E4", "F4", "G4", "A4", "C5"]);
   });
-  it("reads the pentatonic disc as just too", () => {
-    const sc = scaleOf(PRESETS[2].slots, 654);
+  it("reads C4–C5 as the just C major scale", () => {
+    const sc = scaleOf(TEMPLATES[1].slots, TEMPLATES[1].rpm);
     expect(sc.just).toBe(true);
-    expect(sc.rings.map((r) => r.ratio)).toEqual(["1/1", "9/8", "5/4", "3/2", "5/3"]);
+    expect(sc.rings.map((r) => r.ratio)).toEqual(["1/1", "9/8", "5/4", "4/3", "3/2", "5/3", "15/8", "2/1"]);
+    expect(sc.rings.map((r) => r.name + r.oct)).toEqual(["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"]);
   });
   it("is not just when a ring falls outside the scale", () => {
     expect(scaleOf([24, 25], 654).just).toBe(false);

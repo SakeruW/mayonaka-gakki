@@ -1,16 +1,19 @@
 // Light through the spinning disc: each ring of holes chops the bulb's light at holes × rpm / 60,
 // and the Light-Pick's photocell hears every ring it overlaps, as loud as the light where it sits.
 
-import { centsToRatio, fanHarpHz, noteOf, type Harmonics } from "../../engine/pattern-wave";
+import { NOTE_NAMES, centsToRatio, fanHarpHz, noteOf, type Harmonics } from "../../engine/pattern-wave";
 
 export interface Pos { x: number; y: number }
 export interface Ring { N: number; r0: number; r1: number; rc: number; pitch: number; w: number }
 
-export const PRESETS = [
+/** a disc: hole counts per ring, inner first, and its 強 speed. Custom discs also keep the notes they were made from. */
+export interface Disc { id: string; label: string; slots: number[]; rpm: number; notes?: string[] }
+
+/** the two discs that come with the fan, both just-intoned on 654 rpm (24 holes = C4) */
+export const TEMPLATES: readonly Disc[] = [
   { id: "blade", label: "ハ調8輪", slots: [18, 24, 27, 30, 32, 36, 40, 48], rpm: 654 },
-  { id: "kira", label: "Kira Killer", slots: [30, 36, 40, 45, 48, 53, 60, 64], rpm: 1762 },
-  { id: "penta", label: "五音5輪", slots: [24, 27, 30, 36, 40], rpm: 654 },
-] as const;
+  { id: "c4c5", label: "C4〜C5", slots: [24, 27, 30, 32, 36, 40, 45, 48], rpm: 654 },
+];
 
 /** 切 弱 中 強: the speed switch, in semitones 0 (off), −5, −2, ±0 */
 export const SPEEDS = [0, Math.pow(2, -5 / 12), Math.pow(2, -2 / 12), 1];
@@ -25,7 +28,7 @@ export const KEY_ANGLE = -Math.PI * 0.22;
 /** the bulb sits low behind the disc */
 export const BULB: Pos = { x: 0, y: 0.45 };
 
-export const MAX_RINGS = 9, MAX_HOLES = 200, MIN_RPM = 30, MAX_RPM = 3000;
+export const MAX_RINGS = 9;
 
 export function ringsOf(slots: readonly number[]): Ring[] {
   const pitch = (OUTER - INNER) / slots.length, w = pitch * 0.82;
@@ -80,16 +83,36 @@ export function tune(rings: Ring[], amps: number[], rpm: number): Reading | null
   return { best, N: rings[best].N, hz, ...nn, also };
 }
 
-/** "18, 24 27" → [18, 24, 27]; null unless 1–9 whole numbers from 1 to 200 */
-export function parseSlots(text: string): number[] | null {
-  const parts = text.split(/[\s,、，]+/).filter(Boolean).map(Number);
-  if (!parts.length || parts.length > MAX_RINGS || parts.some((n) => !Number.isInteger(n) || n < 1 || n > MAX_HOLES)) return null;
-  return parts;
+// ---------- discs made from notes ----------
+
+/** the notes a ring can be set to, A2 to C6 */
+export const NOTE_CHOICES: string[] = Array.from({ length: 84 - 45 + 1 }, (_, i) => { const m = 45 + i; return NOTE_NAMES[m % 12] + (Math.floor(m / 12) - 1); });
+
+export function noteHz(note: string): number {
+  const m = /^(.+?)(-?\d+)$/.exec(note);
+  const k = m ? NOTE_NAMES.indexOf(m[1] as (typeof NOTE_NAMES)[number]) : -1;
+  if (!m || k < 0) return NaN;
+  return 440 * Math.pow(2, ((Number(m[2]) + 1) * 12 + k - 69) / 12);
 }
 
-export function parseRpm(text: string): number | null {
-  const v = Math.round(Number(text));
-  return v >= MIN_RPM && v <= MAX_RPM ? v : null;
+const FIT_RPM = [240, 1800] as const, FIT_HOLES = [4, 120] as const, HOME_RPM = 654;
+
+/**
+ * Hole counts are whole numbers, so most notes can only be hit closely, not exactly. Try every 強 speed in range,
+ * round each ring to the nearest hole count, and keep the speed whose worst ring is closest to its note
+ * (a little preference for the fan's usual 654 rpm breaks near-ties).
+ */
+export function fitDisc(notes: readonly string[]): { slots: number[]; rpm: number; cents: number[] } {
+  const hz = notes.map(noteHz);
+  let best = { slots: [] as number[], rpm: HOME_RPM, cents: [] as number[] }, score = Infinity;
+  for (let rpm = FIT_RPM[0]; rpm <= FIT_RPM[1]; rpm++) {
+    const slots = hz.map((f) => Math.round(f * 60 / rpm));
+    if (slots.some((n) => n < FIT_HOLES[0] || n > FIT_HOLES[1])) continue;
+    const cents = slots.map((n, i) => 1200 * Math.log2(fanHarpHz(n, rpm) / hz[i]));
+    const s = Math.max(...cents.map(Math.abs)) + 0.002 * Math.abs(rpm - HOME_RPM);
+    if (s < score) { score = s; best = { slots, rpm, cents }; }
+  }
+  return best;
 }
 
 // ---------- what the disc is tuned to ----------
@@ -102,7 +125,7 @@ function fraction(n: number, d: number) { const g = gcd(n, d); return [n / g, d 
 /** fold a ratio into one octave, [1, 2) */
 function folded(n: number, d: number) { while (n >= 2 * d) d *= 2; while (n < d) n *= 2; return fraction(n, d); }
 
-export interface RingInfo { holes: number; ratio: string; name: string; oct: number; hz: number }
+export interface RingInfo { holes: number; ratio: string; name: string; oct: number; cents: number; hz: number }
 export interface DiscScale { ref: number; just: boolean; rings: RingInfo[] }
 
 /**
@@ -118,7 +141,7 @@ export function scaleOf(slots: readonly number[], rpm: number): DiscScale {
   }
   const rings = slots.map((holes) => {
     const [n, d] = fraction(holes, ref), hz = fanHarpHz(holes, rpm), nn = noteOf(hz);
-    return { holes, ratio: `${n}/${d}`, name: nn.name, oct: nn.oct, hz };
+    return { holes, ratio: `${n}/${d}`, name: nn.name, oct: nn.oct, cents: nn.cents, hz };
   });
   const just = slots.every((h) => { const [n, d] = folded(h, ref); return JUST.has(`${n}/${d}`); });
   return { ref, just, rings };
