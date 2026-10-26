@@ -1,10 +1,24 @@
-// An open-reel deck played the Open Reel Ensemble way, with a rod: the tape runs off a single reel, round a guide,
-// across the heads, and is tied to the tip of a rod standing where the take-up reel would be. Rocking the rod drags
-// the tape across the head and back; a finger can also pull the tape or knock it against the head.
+// An open-reel deck played the Open Reel Ensemble way: the box stands upright with one reel on top; the tape runs down
+// past the heads, out through a slot in the side, and is tied to the tip of a lever planted outside the box.
+// Rocking the lever drags the tape across the head and back; a finger can also pull the tape or knock it against the head.
 // Tape speed s: 1 = the speed it was recorded at (19 cm/s), negative = backwards.
 
 /** reel geometry, as fractions of the reel's flange radius: the hub, and how full the reel is */
 export const HUB_R = 0.3, SUPPLY_R = 0.8;
+
+/**
+ * The deck drawing, in deck units: 10 across, 12.5 down. The box stands on the left with the reel on top and the heads
+ * stacked down its right side; the lever stands outside the box on the right.
+ */
+export const DECK = {
+  width: 10, height: 12.5,
+  box: { x: 0.35, y: 0.3, w: 6.25, h: 11.9 },
+  reel: { x: 3.4, y: 3.05, r: 2.6 },          // r: the flange
+  tapeX: 6.08,                                // the tape's run down past the heads
+  guideTop: { x: 5.83, y: 5.55, r: 0.25 },
+  guideLow: { x: 5.83, y: 9.75, r: 0.25 },
+  heads: [6.55, 7.55, 8.55],                  // erase, record, playback, top to bottom
+} as const;
 /** at s = 1 a pack of radius 0.68 turns half a revolution a second, about what a 7-inch reel does at 19 cm/s */
 export const V0 = 2 * Math.PI * 0.5 * 0.68;
 
@@ -94,24 +108,33 @@ export function demoLoop(sr = TAPE_RATE): Float32Array {
   return out;
 }
 
-// ---------- the lever (Open Reel Ensemble's rod) ----------
+// ---------- the lever ----------
 
 /**
- * A rod on a pivot at the bottom right of the deck, where the take-up reel would be, the tape's end tied to its tip.
- * Rocking it drags the tape across the head and back. Positions are in deck units (the deck is 16 wide).
+ * A long pale arm hinged on the outside of the box's right side, pointing down and out. The tape comes out of a slot in
+ * the box and is tied partway along the arm. Swinging the arm up draws more tape out of the box, so the tape runs
+ * forward past the heads; swinging it down lets the tape back in, and it runs backwards. Like any lever, a big swing of
+ * the handle moves the tape a little, which makes it easy to control. Angles are below the horizontal, in radians.
  */
-export const LEVER = { pivotX: 13, pivotY: 11.25, length: 2.3, maxSwing: 0.55, gain: 2.4 } as const;
+export const LEVER = { hingeX: 6.85, hingeY: 9.1, length: 2.95, tieAt: 1.35, rest: 0.87, min: 0.3, max: 1.42, gain: 5 } as const;
+/** where the tape leaves the box */
+export const SLOT = { x: DECK.box.x + DECK.box.w, y: 9.95 } as const;
 
-/** where the rod's tip is for a swing angle (0 = upright, positive = leaning right) */
-export function leverTip(theta: number) {
-  return { x: LEVER.pivotX + LEVER.length * Math.sin(theta), y: LEVER.pivotY - LEVER.length * Math.cos(theta) };
+/** a point `dist` along the arm at swing `phi` */
+export function leverPoint(phi: number, dist: number = LEVER.length) {
+  return { x: LEVER.hingeX + dist * Math.cos(phi), y: LEVER.hingeY + dist * Math.sin(phi) };
 }
 
-/** the swing angle for a hand at (x, y), held within the rod's travel */
+/** the swing for a hand at (x, y), held within the arm's travel */
 export function leverAngle(x: number, y: number) {
-  const a = Math.atan2(x - LEVER.pivotX, LEVER.pivotY - y);
-  return Math.max(-LEVER.maxSwing, Math.min(LEVER.maxSwing, a));
+  return Math.max(LEVER.min, Math.min(LEVER.max, Math.atan2(y - LEVER.hingeY, x - LEVER.hingeX)));
 }
 
-/** tape speed from the tip moving sideways at v deck units/s: the tape tied to it is dragged across the head */
-export function leverSpeed(v: number) { return LEVER.gain * v / (V0 * 3.6); }
+/** how much tape is out of the box, slot to tie, for a swing */
+export function tapeOut(phi: number) { const t = leverPoint(phi, LEVER.tieAt); return Math.hypot(t.x - SLOT.x, t.y - SLOT.y); }
+
+/** tape speed from the tape out of the box changing at v deck units/s: more tape out is forward */
+export function leverSpeed(v: number) { return LEVER.gain * v / tapeUnitsPerSecond(); }
+
+/** how far the tape travels, in deck units, each second at s = 1 */
+export function tapeUnitsPerSecond() { return V0 * DECK.reel.r; }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readTape, recordSample, runHead, wowFlutter, wrap } from "../../src/engine/tape";
 import {
-  LEVER, LOOP_BEATS, LOOP_BPM, SUPPLY_R, counter, demoLoop, handSpeed, hissLevel, leverAngle, leverSpeed, leverTip, reelOmega, shiftCents,
+  LEVER, LOOP_BEATS, LOOP_BPM, SUPPLY_R, counter, demoLoop, handSpeed, hissLevel, leverAngle, leverPoint, leverSpeed, reelOmega, tapeOut, tapeUnitsPerSecond, shiftCents,
   speedText, tapeStep, timeText, toneHz,
 } from "../../src/instruments/open-reel/model";
 
@@ -55,19 +55,19 @@ describe("the tape on its own", () => {
 });
 
 describe("the lever", () => {
-  it("stands upright with its tip on the tape line, and swings within its travel", () => {
-    expect(leverTip(0).y).toBeCloseTo(8.95, 6);
-    expect(leverTip(0).x).toBe(LEVER.pivotX);
-    expect(leverAngle(LEVER.pivotX + 10, LEVER.pivotY - 1)).toBe(LEVER.maxSwing);
-    expect(leverAngle(LEVER.pivotX - 10, LEVER.pivotY - 1)).toBe(-LEVER.maxSwing);
+  it("is hinged outside the box and swings within its travel", () => {
+    expect(leverPoint(0.5, 0).x).toBe(LEVER.hingeX);
+    expect(LEVER.hingeX).toBeGreaterThan(6.6);                                 // outside the box's right side
+    expect(leverAngle(LEVER.hingeX + 5, LEVER.hingeY - 5)).toBe(LEVER.min);    // as far up as it goes
+    expect(leverAngle(LEVER.hingeX + 0.1, LEVER.hingeY + 5)).toBe(LEVER.max);  // as far down
   });
-  it("drags the tape forward when its tip moves right, back when it moves left", () => {
-    expect(leverSpeed(2)).toBeGreaterThan(0);
-    expect(leverSpeed(-2)).toBeCloseTo(-leverSpeed(2), 9);
+  it("draws tape out of the box as it swings up, and lets it back in as it swings down", () => {
+    for (let p = LEVER.min; p < LEVER.max - 0.05; p += 0.05) expect(tapeOut(p)).toBeGreaterThan(tapeOut(p + 0.05));
+    expect(leverSpeed(1)).toBeGreaterThan(0);
+    expect(leverSpeed(-1)).toBeCloseTo(-leverSpeed(1), 9);
   });
   it("a full swing runs most of a second of tape past the head", () => {
-    const travel = leverTip(LEVER.maxSwing).x - leverTip(-LEVER.maxSwing).x;   // deck units
-    const seconds = leverSpeed(travel);                                         // over one second of swinging
+    const seconds = LEVER.gain * (tapeOut(LEVER.min) - tapeOut(LEVER.max)) / tapeUnitsPerSecond();
     expect(seconds).toBeGreaterThan(0.5);
     expect(seconds).toBeLessThan(1.2);
   });

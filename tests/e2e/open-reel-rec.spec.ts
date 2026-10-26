@@ -7,8 +7,12 @@ test.use({
   launchOptions: { args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] },
 });
 
-/** push the lever right with the keyboard while the lamp is checked */
-async function pushLever(page: Page) { await page.keyboard.down("ArrowRight"); }
+/** swing the lever all the way down first, then hold it swinging up: a full half-second of tape forward */
+async function pushLever(page: Page) {
+  await page.keyboard.down("ArrowDown"); await page.waitForTimeout(700); await page.keyboard.up("ArrowDown");
+  await page.waitForTimeout(400);                       // the tape settles
+  await page.keyboard.down("ArrowRight");
+}
 async function letGo(page: Page) { await page.keyboard.up("ArrowRight"); }
 
 test("REC records from the mic while the lever pushes the tape forward: the REC lamp lights only then", async ({ page }) => {
@@ -17,6 +21,7 @@ test("REC records from the mic while the lever pushes the tape forward: the REC 
   const rec = page.getByRole("button", { name: "録音" }), led = page.locator(".open-reel .rec-led");
   await rec.click();
   await expect(rec).toHaveAttribute("aria-pressed", "true");
+  await page.waitForTimeout(500);                       // the mic opens
   await expect(led).not.toHaveClass(/on/);
   await pushLever(page);
   await expect(led).toHaveClass(/on/);
@@ -44,6 +49,7 @@ test("switching REC off releases the microphone, and arming again reopens it", a
   await expect.poll(live).toBe(0);                      // the browser's mic indicator goes off
   await rec.click();
   await expect.poll(live).toBe(1);
+  await page.waitForTimeout(300);
   await pushLever(page);
   await expect(page.locator(".open-reel .rec-led")).toHaveClass(/on/);
   await rec.click();

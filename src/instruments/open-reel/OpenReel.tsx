@@ -4,9 +4,9 @@ import { shiftCents, speedText, timeText } from "./model";
 import { TapeRig, type Readout } from "./rig";
 import "./open-reel.css";
 
-// A 1970s open-reel deck at midnight, set up the Open Reel Ensemble way: one reel, the tape across the heads tied to a
-// bamboo lever where the take-up reel would be. Rock the lever to drag the tape across the head and back; tap the tape
-// to knock it against the head; record onto it with REC. Below, the VFD and the VU meter.
+// A 1970s open-reel deck at midnight, set up the Open Reel Ensemble way: the box stands upright with one reel on top,
+// and the tape runs down past the heads and out of the box to a lever hinged on its side. Swing the lever to drag the
+// tape across the head and back; tap the tape to knock it against the head; record onto it with REC.
 export default function OpenReel({ title }: { title: string }) {
   const deckRef = useRef<HTMLCanvasElement>(null);
   const needleRef = useRef<HTMLElement>(null);
@@ -24,18 +24,19 @@ export default function OpenReel({ title }: { title: string }) {
   }, []);
   useEffect(() => { rigRef.current?.update({ rec }); }, [rec]);
 
-  // keyboard: hold ← → to rock the lever, R record, T tap the tape
+  // keyboard: hold ↑ or → to swing the lever up (tape forward), ↓ or ← to swing it down (back), R record, T tap the tape
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || e.metaKey || e.ctrlKey || e.altKey) return;
       const rig = rigRef.current;
-      if (e.key === "ArrowLeft" || e.key === "ArrowRight") { rig?.rock(e.key === "ArrowLeft" ? -1 : 1); e.preventDefault(); return; }
+      const dir = e.key === "ArrowUp" || e.key === "ArrowRight" ? 1 : e.key === "ArrowDown" || e.key === "ArrowLeft" ? -1 : 0;
+      if (dir) { rig?.rock(dir); e.preventDefault(); return; }
       if (e.repeat) return;
       if (e.key.toLowerCase() === "r") { rig?.wake(); setRec((r) => !r); }
       else if (e.key.toLowerCase() === "t") rig?.tap();
     };
-    const up = (e: KeyboardEvent) => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") rigRef.current?.rock(0); };
+    const up = (e: KeyboardEvent) => { if (e.key.startsWith("Arrow")) rigRef.current?.rock(0); };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };

@@ -1,12 +1,14 @@
-// The running deck: one reel, the tape across the heads tied to the lever, the playback head, the VU needle.
-// Everything per-frame lives here, outside React. The view hands in the REC switch and gets readouts back.
+// The running deck: an upright box with one reel on top, the tape down past the heads and out of a slot to the lever
+// hinged outside the box; the playback head and the VU needle. Everything per-frame lives here, outside React.
+// The view hands in the REC switch and gets readouts back.
 
 import { ensureAudio } from "../../engine/audio";
 import { onFrame } from "../../engine/loop";
 import { createTapeHead, type TapeHead } from "../../engine/tape";
 import workletUrl from "./tape-worklet.ts?worker&url";
 import {
-  HUB_R, LEVER, SUPPLY_R, TAPE_RATE, V0, counter, demoLoop, handSpeed, hissLevel, leverAngle, leverSpeed, leverTip, reelOmega, tapeStep, toneHz,
+  DECK, HUB_R, LEVER, SLOT, SUPPLY_R, TAPE_RATE, counter, demoLoop, handSpeed, hissLevel, leverAngle, leverPoint, leverSpeed, reelOmega,
+  tapeOut, tapeStep, tapeUnitsPerSecond, toneHz,
 } from "./model";
 
 export interface DeckSettings { rec: boolean }
@@ -16,24 +18,24 @@ export type MicState = "off" | "on" | "denied";
 type Pt = { x: number; y: number };
 /** a hand on something that moves the tape: the lever, the reel, or the tape itself */
 interface Hand { id: number; at: number; v: number }
-interface LeverHand extends Hand { offset: number; lastTip: number }
+interface LeverHand extends Hand { offset: number; lastOut: number }
 interface ReelHand extends Hand { last: number; offset: number }
 interface TapeHand extends Hand { last: number; f: Pt }
 
-const ASPECT = 1.35;          // 16 deck units wide, 11.85 tall: room for the lever's pivot under the tape
+const ASPECT = DECK.width / DECK.height;
 const REPORT_EVERY = 0.08;
 const STALE_MS = 60;          // a hand that hasn't moved for this long is holding still
 
 export class TapeRig {
   private s: DeckSettings;
   private speed = 0;                   // tape speed, × recorded speed
-  private reel = { c: { x: 0, y: 0 }, angle: 0 };
-  private theta = 0;                   // the lever's swing, 0 = upright
-  private keyDir = 0;                  // ← → rock the lever from the keyboard
+  private reelAngle = 0;
+  private phi: number = LEVER.rest;    // the lever's swing below the horizontal
+  private keyDir = 0;                  // ↑ ↓ (or ← →) swing the lever from the keyboard
   private lever: LeverHand | null = null;
   private reelHand: ReelHand | null = null;
   private tapeHand: TapeHand | null = null;
-  private dip = { x: 0, amount: 0 };   // where a finger last knocked the tape
+  private dip = { y: 0, amount: 0 };   // where a finger last knocked the tape
   private revs = 0;
   private ctx: CanvasRenderingContext2D;
   private plate: HTMLCanvasElement | null = null;
@@ -69,7 +71,7 @@ export class TapeRig {
     if (disarmed) this.closeMic();
   }
 
-  /** hold ← or → to rock the lever from the keyboard (−1, 0, +1) */
+  /** hold a key to swing the lever: +1 up (tape forward), −1 down (back), 0 let go */
   rock(dir: number) { if (dir) this.wake(); this.keyDir = dir; }
 
   // ---------- audio ----------
@@ -129,9 +131,9 @@ export class TapeRig {
   }
 
   /** a finger knocks the tape against the head: a jolt of tape past it and a moment of hard contact */
-  tap(x?: number) {
+  tap(y?: number) {
     this.wake();
-    this.dip = { x: x ?? 0.4, amount: 1 };
+    this.dip = { y: y ?? 7, amount: 1 };
     if (!this.lever && !this.reelHand && !this.tapeHand) this.speed += 1.8;
     this.head?.knock(2.4, this.contact());
   }
@@ -142,54 +144,54 @@ export class TapeRig {
   // ---------- hands on the lever, the reel and the tape ----------
   private bindInput() {
     const cv = this.cv;
-    const local = (e: PointerEvent): Pt => { const b = cv.getBoundingClientRect(); return { x: (e.clientX - b.left) * this.dpr, y: (e.clientY - b.top) * this.dpr }; };
+    // pointer positions in deck units
+    const local = (e: PointerEvent): Pt => { const b = cv.getBoundingClientRect(); return { x: (e.clientX - b.left) / b.width * DECK.width, y: (e.clientY - b.top) / b.width * DECK.width }; };
     const onLever = (p: Pt) => {
-      // anywhere along the rod, or in the arc it sweeps
-      const tip = leverTip(this.theta), U = this.U, px = p.x / U, py = p.y / U;
-      const ax = LEVER.pivotX, ay = LEVER.pivotY, dx = tip.x - ax, dy = tip.y - ay;
-      const t = Math.max(0, Math.min(1.12, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
-      return Math.hypot(px - (ax + t * dx), py - (ay + t * dy)) < 0.75;
+      const a = leverPoint(this.phi, 0), b = leverPoint(this.phi), dx = b.x - a.x, dy = b.y - a.y;
+      const t = Math.max(0, Math.min(1.08, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
+      return t > 0.15 && Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy)) < 0.75;
     };
+    const R = DECK.reel, TX = DECK.tapeX, G1 = DECK.guideTop, G2 = DECK.guideLow;
     const down = (e: PointerEvent) => {
       e.preventDefault();
       this.wake();
-      const p = local(e), now = performance.now(), U = this.U;
+      const p = local(e), now = performance.now();
       const capture = () => { try { cv.setPointerCapture(e.pointerId); } catch { /* fine without capture */ } };
       if (onLever(p)) {
         capture();
-        this.lever = { id: e.pointerId, at: now, v: 0, offset: this.theta - leverAngle(p.x / U, p.y / U), lastTip: leverTip(this.theta).x };
+        this.lever = { id: e.pointerId, at: now, v: 0, offset: this.phi - leverAngle(p.x, p.y), lastOut: tapeOut(this.phi) };
         cv.classList.add("down");
-      } else if (Math.hypot(p.x - this.reel.c.x, p.y - this.reel.c.y) < 3.6 * U) {
+      } else if (Math.hypot(p.x - R.x, p.y - R.y) < R.r) {
         capture();
-        const a = Math.atan2(p.y - this.reel.c.y, p.x - this.reel.c.x);
-        this.reelHand = { id: e.pointerId, at: now, v: 0, last: a, offset: this.reel.angle - a };
+        const a = Math.atan2(p.y - R.y, p.x - R.x);
+        this.reelHand = { id: e.pointerId, at: now, v: 0, last: a, offset: this.reelAngle - a };
         cv.classList.add("down");
-      } else if (!this.tapeHand && Math.abs(p.y - this.tapeY()) < 0.9 * U && p.x > 1.6 * U && p.x < 10 * U) {
-        // touching the tape knocks it onto the head; keep hold and drag to pull it across the head
-        this.tap(p.x / this.W);
+      } else if (!this.tapeHand && Math.abs(p.x - TX) < 0.8 && p.y > G1.y && p.y < G2.y) {
+        // touching the tape knocks it onto the head; keep hold and drag to pull it past the heads
+        this.tap(p.y);
         capture();
-        this.tapeHand = { id: e.pointerId, at: now, v: 0, last: p.x, f: p };
+        this.tapeHand = { id: e.pointerId, at: now, v: 0, last: p.y, f: p };
       }
     };
     const move = (e: PointerEvent) => {
-      const now = performance.now(), p = local(e), U = this.U;
-      const blend = (h: Hand, v: number) => { const dt = Math.max(0.004, (now - h.at) / 1000); h.v = h.v * 0.4 + (v / dt) * 0.6; h.at = now; };
+      const now = performance.now(), p = local(e);
+      const blend = (h: Hand, d: number) => { const dt = Math.max(0.004, (now - h.at) / 1000); h.v = h.v * 0.4 + (d / dt) * 0.6; h.at = now; };
       const lv = this.lever;
       if (lv && lv.id === e.pointerId) {
-        this.theta = Math.max(-LEVER.maxSwing, Math.min(LEVER.maxSwing, leverAngle(p.x / U, p.y / U) + lv.offset));
-        const tip = leverTip(this.theta).x;
-        blend(lv, tip - lv.lastTip); lv.lastTip = tip;
+        this.phi = Math.max(LEVER.min, Math.min(LEVER.max, leverAngle(p.x, p.y) + lv.offset));
+        const out = tapeOut(this.phi);
+        blend(lv, out - lv.lastOut); lv.lastOut = out;
         return;
       }
       const th = this.tapeHand;
-      if (th && th.id === e.pointerId) { blend(th, p.x - th.last); th.last = p.x; th.f = p; return; }
+      if (th && th.id === e.pointerId) { blend(th, p.y - th.last); th.last = p.y; th.f = p; return; }
       const rh = this.reelHand;
       if (rh && rh.id === e.pointerId) {
-        const a = Math.atan2(p.y - this.reel.c.y, p.x - this.reel.c.x);
+        const a = Math.atan2(p.y - R.y, p.x - R.x);
         let d = a - rh.last;
         if (d > Math.PI) d -= 2 * Math.PI; else if (d < -Math.PI) d += 2 * Math.PI;
         blend(rh, d); rh.last = a;
-        this.reel.angle = a + rh.offset;   // the reel stays under the finger
+        this.reelAngle = a + rh.offset;   // the reel stays under the finger
       }
     };
     const up = (e: PointerEvent) => {
@@ -219,11 +221,11 @@ export class TapeRig {
 
   // ---------- loop ----------
   private frame = (dt: number, now: number) => {
-    // the keyboard rocks the lever at a steady pace, about a full swing in a third of a second
     if (this.keyDir && !this.lever) {
-      const before = leverTip(this.theta).x;
-      this.theta = Math.max(-LEVER.maxSwing, Math.min(LEVER.maxSwing, this.theta + this.keyDir * 3.2 * dt));
-      this.speed = leverSpeed((leverTip(this.theta).x - before) / dt);
+      // the keyboard swings the lever at a steady pace, about a full swing in half a second
+      const before = tapeOut(this.phi);
+      this.phi = Math.max(LEVER.min, Math.min(LEVER.max, this.phi - this.keyDir * 2.2 * dt));
+      this.speed = leverSpeed((tapeOut(this.phi) - before) / dt);
     } else {
       // the hand that moved last drives the tape; a hand held still holds the tape still
       const hands: Hand[] = [this.lever, this.reelHand, this.tapeHand].filter((h) => h !== null);
@@ -232,14 +234,14 @@ export class TapeRig {
       if (h) {
         const v = now - h.at > STALE_MS ? 0 : h.v;
         const want = h === this.lever ? leverSpeed(v)
-                   : h === this.reelHand ? handSpeed(-v, SUPPLY_R)         // turning the reel anticlockwise feeds tape forward
-                   : v / (V0 * 3.6 * this.U);                             // the tape pulled rightward is forward
+                   : h === this.reelHand ? handSpeed(v, SUPPLY_R)           // turning the reel clockwise feeds tape down to the heads
+                   : v / tapeUnitsPerSecond();                              // the tape pulled downward is forward
         this.speed += (want - this.speed) * (1 - Math.exp(-dt / 0.025));
       } else {
         this.speed = tapeStep(this.speed, dt);
       }
     }
-    if (!this.reelHand) this.reel.angle -= reelOmega(this.speed, SUPPLY_R) * dt;
+    if (!this.reelHand) this.reelAngle += reelOmega(this.speed, SUPPLY_R) * dt;
     this.revs += reelOmega(this.speed, SUPPLY_R) * dt / (2 * Math.PI);
     this.dip.amount *= Math.exp(-dt / 0.08);
 
@@ -287,125 +289,128 @@ export class TapeRig {
   private fit() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2), W = Math.round(this.cv.clientWidth * dpr), H = Math.round(W / ASPECT);
     if (W === this.W && dpr === this.dpr) return;
-    this.dpr = dpr; this.W = W; this.H = H; this.U = W / 16;
+    this.dpr = dpr; this.W = W; this.H = H; this.U = W / DECK.width;
     this.cv.width = W; this.cv.height = H;
-    this.reel.c = { x: 4.05 * this.U, y: 4.1 * this.U };
     this.plate = null;
   }
-  private tapeY() { return 8.95 * this.U; }
 
-  /** the faceplate: black brushed aluminium, the empty take-up spindle and the lever's bracket, drawn once per size */
+  /** the box: silver brushed aluminium standing on end, its side in shadow, the reel table, the head block, the slot */
   private faceplate() {
     if (this.plate) return this.plate;
-    const p = document.createElement("canvas"), { W, H, U, dpr } = this;
+    const p = document.createElement("canvas"), { W, H, U, dpr } = this, B = DECK.box;
     p.width = W; p.height = H;
     const c = p.getContext("2d")!;
-    const g = c.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, "#2b2f30"); g.addColorStop(1, "#16191a");
-    c.fillStyle = g; c.beginPath(); c.roundRect(0, 0, W, H, 0.45 * U); c.fill();
-    let seed = 3;
+    const bx = B.x * U, by = B.y * U, bw = B.w * U, bh = B.h * U, depth = 0.28 * U;
+    // the floor shadow and the box's right side, seen a little from the left
+    c.fillStyle = "rgba(0,0,0,0.45)"; c.beginPath(); c.ellipse(bx + bw * 0.55, by + bh + 0.05 * U, bw * 0.62, 0.22 * U, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#6e7477"; c.beginPath(); c.moveTo(bx + bw, by + 0.15 * U); c.lineTo(bx + bw + depth, by + 0.35 * U);
+    c.lineTo(bx + bw + depth, by + bh - 0.05 * U); c.lineTo(bx + bw, by + bh); c.closePath(); c.fill();
+    // the front: brushed silver
+    const g = c.createLinearGradient(bx, by, bx + bw, by + bh);
+    g.addColorStop(0, "#dfe3e5"); g.addColorStop(0.55, "#b9bfc2"); g.addColorStop(1, "#9aa1a4");
+    c.fillStyle = g; c.beginPath(); c.roundRect(bx, by, bw, bh, 0.28 * U); c.fill();
+    c.save(); c.beginPath(); c.roundRect(bx, by, bw, bh, 0.28 * U); c.clip();
+    let seed = 5;
     const rnd = () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296);
-    for (let y = 0; y < H; y += 1) { c.fillStyle = `rgba(255,255,255,${(rnd() * 0.035).toFixed(3)})`; c.fillRect(0, y, W, 1); }
-    // reel tables: the left one carries the reel; the right one stands empty, its spindle bare
-    for (const x of [4.05, 11.95]) { c.fillStyle = "rgba(0,0,0,0.35)"; c.beginPath(); c.arc(x * U, 4.1 * U, 3.75 * U, 0, Math.PI * 2); c.fill(); }
-    const sx = 11.95 * U, sy = 4.1 * U;
-    const tg = c.createRadialGradient(sx - 0.3 * U, sy - 0.3 * U, 0, sx, sy, 1.2 * U);
-    tg.addColorStop(0, "#4a5052"); tg.addColorStop(1, "#1c1f20");
-    c.fillStyle = tg; c.beginPath(); c.arc(sx, sy, 1.2 * U, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = "rgba(255,255,255,0.1)"; c.lineWidth = dpr; c.stroke();
-    c.fillStyle = "#d7dcde";
-    for (let k = 0; k < 3; k++) { const a = k * 2 * Math.PI / 3 - Math.PI / 2; c.save(); c.translate(sx, sy); c.rotate(a); c.fillRect(-0.06 * U, 0.12 * U, 0.12 * U, 0.26 * U); c.restore(); }
-    c.beginPath(); c.arc(sx, sy, 0.14 * U, 0, Math.PI * 2); c.fill();
-    // the head cover's recess
-    c.fillStyle = "#101213"; c.beginPath(); c.roundRect(4.7 * U, 7.55 * U, 6.6 * U, 1.75 * U, 0.3 * U); c.fill();
-    c.strokeStyle = "rgba(255,255,255,0.08)"; c.lineWidth = dpr; c.stroke();
-    // the lever's bracket: a steel plate bolted to the deck
-    const px = LEVER.pivotX * U, py = LEVER.pivotY * U;
-    c.fillStyle = "#3d4345"; c.beginPath(); c.roundRect(px - 0.7 * U, py - 0.35 * U, 1.4 * U, 0.7 * U, 0.12 * U); c.fill();
-    c.fillStyle = "#8b9396";
-    for (const bx of [-0.5, 0.5]) { c.beginPath(); c.arc(px + bx * U, py, 0.08 * U, 0, Math.PI * 2); c.fill(); }
+    for (let y = by; y < by + bh; y += 1) { c.fillStyle = `rgba(${rnd() > 0.5 ? "255,255,255" : "0,0,0"},${(rnd() * 0.05).toFixed(3)})`; c.fillRect(bx, y, bw, 1); }
+    c.restore();
+    c.strokeStyle = "rgba(255,255,255,0.6)"; c.lineWidth = dpr; c.beginPath(); c.roundRect(bx + dpr, by + dpr, bw - 2 * dpr, bh - 2 * dpr, 0.27 * U); c.stroke();
+    // corner screws
+    c.fillStyle = "#7c8386";
+    for (const [sx, sy] of [[0.35, 0.35], [B.w - 0.35, 0.35], [0.35, B.h - 0.35], [B.w - 0.35, B.h - 0.35]]) { c.beginPath(); c.arc(bx + sx * U, by + sy * U, 0.09 * U, 0, Math.PI * 2); c.fill(); }
+    // the reel table under the reel
+    const R = DECK.reel;
+    c.fillStyle = "rgba(40,46,48,0.28)"; c.beginPath(); c.arc(R.x * U, R.y * U, (R.r + 0.15) * U, 0, Math.PI * 2); c.fill();
+    // the head block: a dark plate the heads stand on, down the right side
+    c.fillStyle = "#2a2f31"; c.beginPath(); c.roundRect(4.75 * U, 5.95 * U, 1.25 * U, 3.3 * U, 0.2 * U); c.fill();
+    c.strokeStyle = "rgba(255,255,255,0.12)"; c.lineWidth = dpr; c.stroke();
+    // a vent grille in the lower half, and the slot the tape leaves by
+    c.fillStyle = "rgba(30,34,36,0.55)";
+    for (let k = 0; k < 7; k++) c.beginPath(), c.roundRect(1.0 * U, (7.0 + k * 0.42) * U, 2.9 * U, 0.16 * U, 0.08 * U), c.fill();
+    c.fillStyle = "#151819"; c.fillRect((SLOT.x - 0.08) * U, (SLOT.y - 0.28) * U, 0.16 * U, 0.56 * U);
+    // the lever's hinge bracket, bolted to the outside of the box
+    c.fillStyle = "#8a9194"; c.beginPath(); c.roundRect((LEVER.hingeX - 0.5) * U, (LEVER.hingeY - 0.42) * U, 0.75 * U, 0.84 * U, 0.12 * U); c.fill();
+    c.fillStyle = "#5d6467"; c.beginPath(); c.arc((LEVER.hingeX - 0.28) * U, (LEVER.hingeY - 0.22) * U, 0.06 * U, 0, Math.PI * 2); c.arc((LEVER.hingeX - 0.28) * U, (LEVER.hingeY + 0.22) * U, 0.06 * U, 0, Math.PI * 2); c.fill();
     this.plate = p;
     return p;
   }
 
   private draw() {
-    const { ctx: c, W, H, U } = this, ty = this.tapeY();
+    const { ctx: c, W, H, U, dpr } = this, R = DECK.reel, G1 = DECK.guideTop, G2 = DECK.guideLow, TX = DECK.tapeX;
     c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, W, H);
     c.drawImage(this.faceplate(), 0, 0);
-    const g1 = { x: 1.95 * U, y: ty - 0.32 * U }, gr = 0.32 * U;
-    const tip = leverTip(this.theta), tx = tip.x * U, tyTip = tip.y * U;
+    const tie = leverPoint(this.phi, LEVER.tieAt);
 
-    // the tape: off the reel, round the guide, across the heads, and on to the lever's tip where its end is tied
-    const a = tangent(this.reel.c, SUPPLY_R * 3.6 * U, g1, gr);
-    const dip = this.dip.amount * 0.35 * U, dx = this.dip.x * W, f = this.tapeHand?.f;
+    // the tape: off the reel, round the top guide, down past the heads, round the low guide, out of the slot to the lever
+    const a = rightTangent({ x: R.x, y: R.y }, SUPPLY_R * R.r, { x: G1.x, y: G1.y }, G1.r);
+    const f = this.tapeHand?.f, dip = this.dip.amount * 0.3;
     c.strokeStyle = "#5a3a22"; c.lineWidth = 0.13 * U; c.lineCap = "round"; c.lineJoin = "round";
-    c.beginPath(); c.moveTo(a.p1.x, a.p1.y); c.lineTo(a.p2.x, a.p2.y);
-    c.arc(g1.x, g1.y, gr, Math.atan2(a.p2.y - g1.y, a.p2.x - g1.x), Math.PI / 2, true);
-    if (f && Math.abs(f.y - ty) > 2 * this.dpr) {
-      // pinched and pulled: the tape runs straight from the guide to the finger
-      c.lineTo(Math.max(g1.x + U, Math.min(5.3 * U, f.x)), ty + Math.max(-1.1 * U, Math.min(1.1 * U, f.y - ty)));
-    } else if (dip > 0.5) { c.lineTo(Math.max(g1.x, dx - 1.4 * U), ty); c.quadraticCurveTo(dx, ty + dip * 2, Math.min(5.4 * U, dx + 1.4 * U), ty); }
-    c.lineTo(9.9 * U, ty);
-    c.lineTo(tx, tyTip);
+    c.beginPath(); c.moveTo(a.p1.x * U, a.p1.y * U); c.lineTo(a.p2.x * U, a.p2.y * U);
+    c.arc(G1.x * U, G1.y * U, G1.r * U, Math.atan2(a.p2.y - G1.y, a.p2.x - G1.x), 0);
+    if (f && Math.abs(f.x - TX) > 0.03) {
+      // pinched and pulled: the tape runs straight from the top guide to the finger
+      c.lineTo((TX + Math.max(-1.1, Math.min(1.1, f.x - TX))) * U, Math.max(G1.y + 0.6, Math.min(DECK.heads[0] - 0.4, f.y)) * U);
+    } else if (dip > 0.05) {
+      const dy = Math.min(DECK.heads[0] - 0.5, Math.max(G1.y + 0.4, this.dip.y));
+      c.lineTo(TX * U, (dy - 0.5) * U); c.quadraticCurveTo((TX + dip * 2) * U, dy * U, TX * U, (dy + 0.5) * U);
+    }
+    c.lineTo(TX * U, G2.y * U);
+    c.arc(G2.x * U, G2.y * U, G2.r * U, 0, Math.atan2(SLOT.y - G2.y, SLOT.x - G2.x) * 0.5);
+    c.lineTo(SLOT.x * U, SLOT.y * U);
+    c.lineTo(tie.x * U, tie.y * U);
     c.stroke();
 
-    c.fillStyle = "#c9ced0"; c.beginPath(); c.arc(g1.x, g1.y, gr * 0.8, 0, Math.PI * 2); c.fill();
-    // heads: erase, record, playback, chrome blocks the tape runs across
-    [6.0, 7.6, 9.2].forEach((hx, i) => {
-      const x = hx * U, w = 0.95 * U, top = ty - 1.05 * U;
-      const hg = c.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
-      hg.addColorStop(0, "#7d8487"); hg.addColorStop(0.5, "#e4e8ea"); hg.addColorStop(1, "#6c7275");
-      c.fillStyle = hg; c.beginPath(); c.roundRect(x - w / 2, top, w, 1.05 * U + 0.06 * U, [0.12 * U, 0.12 * U, 0.4 * U, 0.4 * U]); c.fill();
-      c.fillStyle = i === 1 && this.recording ? "#ff4f9a" : "#202426"; c.fillRect(x - 0.03 * U, ty - 0.18 * U, 0.06 * U, 0.2 * U);   // the gap
+    for (const g of [G1, G2]) { c.fillStyle = "#eef1f2"; c.beginPath(); c.arc(g.x * U, g.y * U, g.r * 0.8 * U, 0, Math.PI * 2); c.fill(); c.strokeStyle = "#7c8386"; c.lineWidth = dpr; c.stroke(); }
+    // heads: erase, record, playback, chrome blocks with their faces to the tape
+    DECK.heads.forEach((hy, i) => {
+      const x0 = 5.0 * U, x1 = (TX - 0.02) * U, h = 0.72 * U, y = hy * U - h / 2;
+      const hg = c.createLinearGradient(0, y, 0, y + h);
+      hg.addColorStop(0, "#7d8487"); hg.addColorStop(0.5, "#eef1f2"); hg.addColorStop(1, "#6c7275");
+      c.fillStyle = hg; c.beginPath(); c.roundRect(x0, y, x1 - x0, h, [0.1 * U, 0.34 * U, 0.34 * U, 0.1 * U]); c.fill();
+      c.fillStyle = i === 1 && this.recording ? "#ff4f9a" : "#202426"; c.fillRect(x1 - 0.2 * U, hy * U - 0.03 * U, 0.2 * U, 0.06 * U);   // the gap
     });
-    // capstan, with the pinch roller swung away: nothing runs the tape but your hands
-    const cx = 10.75 * U;
-    c.fillStyle = "#d9dee0"; c.beginPath(); c.arc(cx, ty - 0.16 * U, 0.16 * U, 0, Math.PI * 2); c.fill();
-    c.fillStyle = "#0b0c0d"; c.beginPath(); c.arc(cx, ty + 0.85 * U, 0.42 * U, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = "rgba(255,255,255,0.12)"; c.lineWidth = this.dpr; c.stroke();
 
-    this.drawLever(tx, tyTip);
+    this.drawLever(tie);
     this.drawReel();
   }
 
-  /** the rod: pale bamboo with its nodes, a cloth grip near the bottom, the tape's end clipped to the tip */
-  private drawLever(tx: number, ty: number) {
-    const { ctx: c, U, dpr } = this, px = LEVER.pivotX * U, py = LEVER.pivotY * U;
-    const ang = Math.atan2(tx - px, py - ty), len = Math.hypot(tx - px, ty - py) + 0.35 * U;
-    c.save(); c.translate(px, py); c.rotate(ang);
-    const w = 0.34 * U, bg = c.createLinearGradient(-w / 2, 0, w / 2, 0);
-    bg.addColorStop(0, "#a88c5c"); bg.addColorStop(0.4, "#ecdcb4"); bg.addColorStop(1, "#9b7f50");
-    c.fillStyle = bg; c.beginPath(); c.roundRect(-w / 2, -len, w, len + 0.15 * U, w / 2); c.fill();
-    c.strokeStyle = "rgba(90,66,30,0.55)"; c.lineWidth = 1.4 * dpr;
-    for (let y = -0.85 * U; y > -len + 0.2 * U; y -= 0.75 * U) { c.beginPath(); c.moveTo(-w / 2, y); c.lineTo(w / 2, y); c.stroke(); }
-    c.fillStyle = "#1d2022"; c.fillRect(-w / 2 - dpr, -0.75 * U, w + 2 * dpr, 0.5 * U);   // the grip
+  /** the lever: a long pale rod on its hinge outside the box, a dark grip at the handle end, the tape clipped partway along */
+  private drawLever(tie: Pt) {
+    const { ctx: c, U, dpr } = this, hx = LEVER.hingeX * U, hy = LEVER.hingeY * U, L = LEVER.length * U;
+    c.save(); c.translate(hx, hy); c.rotate(this.phi);
+    c.fillStyle = "rgba(0,0,0,0.3)"; c.beginPath(); c.roundRect(0.05 * U, 0.12 * U, L, 0.32 * U, 0.16 * U); c.fill();   // its shadow
+    const w = 0.32 * U, rg = c.createLinearGradient(0, -w / 2, 0, w / 2);
+    rg.addColorStop(0, "#fbf7ee"); rg.addColorStop(0.45, "#e6dfcf"); rg.addColorStop(1, "#b9b09c");
+    c.fillStyle = rg; c.beginPath(); c.roundRect(-0.15 * U, -w / 2, L + 0.15 * U, w, w / 2); c.fill();
+    c.fillStyle = "#1d2022"; c.beginPath(); c.roundRect(L - 1.0 * U, -w / 2 - dpr, 0.95 * U, w + 2 * dpr, w / 2); c.fill();   // the grip
     c.restore();
-    // the pivot bolt and the clip at the tip
-    c.fillStyle = "#c9ced0"; c.beginPath(); c.arc(px, py, 0.13 * U, 0, Math.PI * 2); c.fill();
-    c.fillStyle = "#d9dee0"; c.beginPath(); c.roundRect(tx - 0.16 * U, ty - 0.12 * U, 0.32 * U, 0.24 * U, 0.05 * U); c.fill();
+    c.fillStyle = "#d9dee0"; c.beginPath(); c.arc(hx, hy, 0.12 * U, 0, Math.PI * 2); c.fill();   // the hinge pin
+    c.fillStyle = "#eef1f2"; c.beginPath(); c.arc(tie.x * U, tie.y * U, 0.11 * U, 0, Math.PI * 2); c.fill();   // where the tape is tied
+    c.strokeStyle = "#7c8386"; c.lineWidth = dpr; c.stroke();
   }
 
-  /** a 7-inch metal reel: brown tape pack, a silver flange with three windows, the hub keys */
+  /** a 7-inch reel, pale metal: brown tape pack, the flange with three windows, the hub keys */
   private drawReel() {
-    const { ctx: c, U, dpr } = this, F = 3.6 * U, pack = SUPPLY_R * F, r = this.reel;
-    c.save(); c.translate(r.c.x, r.c.y); c.rotate(r.angle);
+    const { ctx: c, U, dpr } = this, R = DECK.reel, F = R.r * U, pack = SUPPLY_R * F;
+    c.save(); c.translate(R.x * U, R.y * U); c.rotate(this.reelAngle);
     const pg = c.createRadialGradient(0, 0, HUB_R * F, 0, 0, pack);
     pg.addColorStop(0, "#3a2414"); pg.addColorStop(1, "#6b4529");
     c.fillStyle = pg; c.beginPath(); c.arc(0, 0, pack, 0, Math.PI * 2); c.fill();
     c.strokeStyle = "rgba(0,0,0,0.18)"; c.lineWidth = dpr;
     for (let k = HUB_R * F + 3 * dpr; k < pack; k += 4 * dpr) { c.beginPath(); c.arc(0, 0, k, 0, Math.PI * 2); c.stroke(); }
-    // flange with three windows, cut out with even-odd so the pack shows through
     c.beginPath(); c.arc(0, 0, F, 0, Math.PI * 2);
     for (let w = 0; w < 3; w++) {
       const a0 = w * 2 * Math.PI / 3 + 0.32, a1 = a0 + 1.45, ri = 0.38 * F, ro = 0.88 * F;
       c.moveTo(Math.cos(a0) * ro, Math.sin(a0) * ro); c.arc(0, 0, ro, a0, a1); c.arc(0, 0, ri, a1, a0, true); c.closePath();
     }
     const fg = c.createLinearGradient(-F, -F, F, F);
-    fg.addColorStop(0, "#f1f4f5"); fg.addColorStop(0.45, "#9aa2a6"); fg.addColorStop(0.55, "#c3c9cc"); fg.addColorStop(1, "#6f777b");
+    fg.addColorStop(0, "#ffffff"); fg.addColorStop(0.45, "#c7ccce"); fg.addColorStop(0.55, "#dde1e3"); fg.addColorStop(1, "#8f979a");
+    c.shadowColor = "rgba(0,0,0,0.35)"; c.shadowBlur = 6 * dpr; c.shadowOffsetY = 2 * dpr;
     c.fillStyle = fg; c.fill("evenodd");
-    c.strokeStyle = "rgba(255,255,255,0.35)"; c.lineWidth = 1.2 * dpr; c.beginPath(); c.arc(0, 0, F - dpr, 0, Math.PI * 2); c.stroke();
+    c.shadowColor = "transparent";
+    c.strokeStyle = "rgba(255,255,255,0.6)"; c.lineWidth = 1.2 * dpr; c.beginPath(); c.arc(0, 0, F - dpr, 0, Math.PI * 2); c.stroke();
     c.fillStyle = "#2a2e30"; c.beginPath(); c.arc(0, 0, 0.26 * F, 0, Math.PI * 2); c.fill();
-    c.fillStyle = "#d7dcde";
+    c.fillStyle = "#e4e8ea";
     for (let k = 0; k < 3; k++) { c.rotate(2 * Math.PI / 3); c.fillRect(-0.035 * F, 0.08 * F, 0.07 * F, 0.12 * F); }
     c.beginPath(); c.arc(0, 0, 0.07 * F, 0, Math.PI * 2); c.fill();
     c.restore();
@@ -422,10 +427,10 @@ export class TapeRig {
   }
 }
 
-/** the outer tangent on the left side from a reel to the guide below it: p1 on the reel, p2 on the guide */
-function tangent(c1: Pt, r1: number, c2: Pt, r2: number) {
+/** the outer tangent on the right side from the reel's pack down to the guide: p1 on the pack, p2 on the guide */
+function rightTangent(c1: Pt, r1: number, c2: Pt, r2: number) {
   const dx = c2.x - c1.x, dy = c2.y - c1.y, d = Math.hypot(dx, dy), th = Math.atan2(dy, dx);
   const al = Math.acos(Math.max(-1, Math.min(1, (r1 - r2) / d)));
   const cands = [th + al, th - al].map((a) => ({ p1: { x: c1.x + r1 * Math.cos(a), y: c1.y + r1 * Math.sin(a) }, p2: { x: c2.x + r2 * Math.cos(a), y: c2.y + r2 * Math.sin(a) } }));
-  return cands[0].p1.x < cands[1].p1.x ? cands[0] : cands[1];
+  return cands[0].p1.x > cands[1].p1.x ? cands[0] : cands[1];
 }
