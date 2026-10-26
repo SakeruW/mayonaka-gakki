@@ -59,9 +59,10 @@ export class TapeRig {
   }
 
   update(next: DeckSettings) {
-    const armed = next.rec && !this.s.rec;
+    const armed = next.rec && !this.s.rec, disarmed = !next.rec && this.s.rec;
     this.s = { ...next };
     if (armed) void this.openMic();
+    if (disarmed) this.closeMic();
   }
 
   // ---------- audio ----------
@@ -101,7 +102,8 @@ export class TapeRig {
     if (this.mic || !navigator.mediaDevices?.getUserMedia) { this.onMic(this.mic ? "on" : "denied"); return; }
     try {
       const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-      if (!this.alive || !this.ac) { mic.getTracks().forEach((t) => t.stop()); return; }
+      // REC may have been switched off, or the page left, while the browser was asking
+      if (!this.alive || !this.ac || !this.s.rec) { mic.getTracks().forEach((t) => t.stop()); return; }
       this.mic = mic;
       this.micNode = this.ac.createMediaStreamSource(mic);
       if (this.head) this.micNode.connect(this.head.node);
@@ -109,6 +111,14 @@ export class TapeRig {
     } catch {
       this.onMic("denied");
     }
+  }
+
+  /** the mic is only open while REC is armed: switching REC off hands it back to the browser */
+  private closeMic() {
+    this.micNode?.disconnect();
+    this.mic?.getTracks().forEach((t) => t.stop());
+    this.mic = null; this.micNode = null;
+    this.head?.setRecording(false);
   }
 
   /** a finger knocks the tape against the head: a jolt of tape past it and a moment of hard contact */
@@ -358,9 +368,7 @@ export class TapeRig {
     this.head?.dispose();
     for (const n of this.nodes) { if (n instanceof AudioBufferSourceNode) { try { n.stop(); } catch { /* stopped */ } } n.disconnect(); }
     this.nodes = []; this.head = null;
-    this.micNode?.disconnect();
-    this.mic?.getTracks().forEach((t) => t.stop());
-    this.mic = null; this.micNode = null;
+    this.closeMic();
   }
 }
 
