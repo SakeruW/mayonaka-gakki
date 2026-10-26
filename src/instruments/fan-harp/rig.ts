@@ -8,7 +8,8 @@ import { BULB, DISC, DUTY, amplitudes, motorStep, keyPick, light, ringWave, ring
 export interface FanSettings { slots: number[]; base: number; speed: number; bend: number; bulb: boolean }
 export interface TunerState { rpm: number; reading: Reading | null }
 
-const REPORT_EVERY = 0.08;   // the readout follows a spinning-up motor at ~12 Hz, not every frame
+const REPORT_EVERY = 0.08;
+const HUB_BLUR = 1 / 20;   // s: how long the eye blends a spinning hub together   // the readout follows a spinning-up motor at ~12 Hz, not every frame
 
 export class FanRig {
   private s: FanSettings;
@@ -236,7 +237,7 @@ export class FanRig {
     // housing rim and hub cap (or the player's own picture)
     ctx.lineWidth = 5 * dpr; ctx.strokeStyle = "#b9c9c2"; ctx.beginPath(); ctx.arc(0, 0, R * 1.08, 0, Math.PI * 2); ctx.stroke();
     const hub = this.hub, hr = R * 0.235;
-    if (!hub) this.drawHub(R, travel);
+    if (!hub) this.drawHub(R, rps);
     else {
       const iw = hub.naturalWidth, ih = hub.naturalHeight, sc = (2 * hr) / Math.min(iw, ih);
       ctx.save(); ctx.beginPath(); ctx.arc(0, 0, hr, 0, Math.PI * 2); ctx.clip();
@@ -252,14 +253,19 @@ export class FanRig {
    * cap with six petal ribs, and a chrome nut. At speed each part smears over the angle it turns in a 1/60 s exposure,
    * like the holes do; the glint on the dome stays put.
    */
-  private drawHub(R: number, travel: number) {
+  private drawHub(R: number, rps: number) {
     const { ctx, dpr } = this, TAU = Math.PI * 2;
-    // draw a pattern repeating every `period` radians, smeared over this frame's travel
+    // The eye blends about 1/20 s together, so the hub is smeared over the angle it turns in that long, not one frame:
+    // smeared over one frame, a screw's arc would land somewhere new every frame and the hub would flicker.
+    const travel = rps * TAU * HUB_BLUR;
+    // draw a pattern repeating every `period` radians, smeared over that travel
     const smeared = (period: number, paint: () => void) => {
+      // once the smear covers a whole repeat, spread the copies over exactly one repeat: it looks the same every frame
+      const span = Math.min(travel, period);
       // enough copies that neighbours overlap, so a part smears into an arc instead of strobing
-      const K = Math.max(1, Math.min(28, Math.ceil(travel / (period * 0.04))));
+      const K = Math.max(1, Math.min(28, Math.ceil(span / (period * 0.04))));
       ctx.save(); ctx.globalAlpha = K === 1 ? 1 : Math.min(1, 2.4 / K);
-      for (let k = 0; k < K; k++) { ctx.save(); ctx.rotate(this.angle - travel * k / K); paint(); ctx.restore(); }
+      for (let k = 0; k < K; k++) { ctx.save(); ctx.rotate(this.angle - span * k / K); paint(); ctx.restore(); }
       ctx.restore();
     };
     const washer = R * 0.245, cap = R * 0.165, nut = R * 0.042;
