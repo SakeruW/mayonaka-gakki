@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { STANDARDS, crtPickupGain, fanHarpHz, harmonics, noteOf, stripeHz } from "../../src/engine/pattern-wave";
+import { STANDARDS, aWeight, crtPickupGain, fanHarpHz, harmonics, loudnessMatch, noteOf, stripeHz } from "../../src/engine/pattern-wave";
 
 const named = (hz: number) => { const n = noteOf(hz); return n.name + n.oct; };
 
@@ -47,8 +47,20 @@ describe("harmonics", () => {
   it("is silent for a flat picture", () => {
     expect(harmonics(new Float32Array(240).fill(0.5), 16)).toBeNull();
   });
-  it("CRT pickup thins the lowest and highest partials", () => {
-    expect(crtPickupGain(1)).toBeLessThan(crtPickupGain(10));
-    expect(crtPickupGain(120)).toBeLessThan(crtPickupGain(10));
+  it("CRT pickup thins the lowest and highest frequencies", () => {
+    expect(crtPickupGain(60)).toBeLessThan(crtPickupGain(600));
+    expect(crtPickupGain(7200)).toBeLessThan(crtPickupGain(600));
+  });
+});
+
+describe("loudness", () => {
+  it("A-weighting is 1 at 1 kHz and much less in the bass", () => {
+    expect(aWeight(1000)).toBeCloseTo(1, 2);
+    expect(aWeight(100)).toBeLessThan(0.15);
+  });
+  it("loudnessMatch sets the A-weighted level", () => {
+    const h = { re: new Float32Array(4), im: Float32Array.from([0, 1, 0, 0.5]) };
+    const m = loudnessMatch(h, 1000, 0.3);
+    expect(Math.sqrt(((m.im[1] * aWeight(1000)) ** 2 + (m.im[3] * aWeight(3000)) ** 2) / 2)).toBeCloseTo(0.3, 6);
   });
 });

@@ -67,7 +67,26 @@ export function harmonics(pattern: ArrayLike<number>, count: number, gain: (k: n
 }
 
 /**
- * The CRT pickup: the hand spans a few lines, which rounds the stripe edges,
- * and the glass couples like a small capacitor, which thins the lowest partials.
+ * The CRT pickup, by frequency, so it acts the same whatever the oscillator plays: the hand spans a few lines, which
+ * rounds off everything above about 3.6 kHz (60 harmonics of a 60 Hz field); the glass couples like a small capacitor,
+ * which thins what's below about 360 Hz.
  */
-export function crtPickupGain(k: number): number { return Math.exp(-Math.pow(k / 60, 2)) * Math.sqrt(k / (k + 6)); }
+export function crtPickupGain(hz: number): number { return Math.exp(-Math.pow(hz / 3600, 2)) * Math.sqrt(hz / (hz + 360)); }
+
+/** A-weighting (IEC 61672) as a gain: how loud the ear hears each frequency, relative to 1 kHz */
+export function aWeight(f: number): number {
+  const f2 = f * f;
+  const ra = (12194 ** 2 * f2 * f2) / ((f2 + 20.6 ** 2) * Math.sqrt((f2 + 107.7 ** 2) * (f2 + 737.9 ** 2)) * (f2 + 12194 ** 2));
+  return ra * 1.2589;   // +2.0 dB puts 1 kHz at 1
+}
+
+/**
+ * Scale a wave so it sounds as loud as any other, whatever its shape: its A-weighted RMS becomes `target`.
+ * (A wave's RMS is the root of half the sum of its harmonics' powers.)
+ */
+export function loudnessMatch(h: Harmonics, f0: number, target: number): Harmonics {
+  let p = 0;
+  for (let k = 1; k < h.re.length; k++) p += (h.re[k] ** 2 + h.im[k] ** 2) * aWeight(k * f0) ** 2;
+  const g = p > 0 ? target / Math.sqrt(p / 2) : 0;
+  return { re: h.re.map((v) => v * g), im: h.im.map((v) => v * g) };
+}

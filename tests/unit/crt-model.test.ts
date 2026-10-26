@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { STANDARDS } from "../../src/engine/pattern-wave";
-import { PH, PW, charFor, handLevel, profileOf, waveOf } from "../../src/instruments/crt-drums/model";
+import { STANDARDS, aWeight } from "../../src/engine/pattern-wave";
+import { LOUDNESS, PH, PW, charFor, handLevel, oscHz, profileOf, waveOf } from "../../src/instruments/crt-drums/model";
 
 /** a PW×PH RGBA picture of n white stripes on black */
 function stripes(n: number) {
@@ -30,14 +30,28 @@ describe("profileOf", () => {
 
 describe("waveOf", () => {
   it("puts n stripes on harmonic n of one visible field", () => {
-    for (const n of [2, 3, 5, 8]) expect(peak(waveOf(profileOf(stripes(n), STANDARDS.ntsc, "text", 0.5))!)).toBe(n);
+    for (const n of [2, 3, 5, 8]) expect(peak(waveOf(profileOf(stripes(n), STANDARDS.ntsc, "text", 0.5), 60)!)).toBe(n);
   });
   it("in stripe mode the strongest partial sits by n × lines / visible of the field rate", () => {
-    const n = 8, k = peak(waveOf(profileOf(stripes(n), STANDARDS.ntsc, "stripes", 0.5))!);
+    const n = 8, k = peak(waveOf(profileOf(stripes(n), STANDARDS.ntsc, "stripes", 0.5), STANDARDS.ntsc.field)!);
     expect(Math.abs(k - n * 262.5 / 240)).toBeLessThan(1);
   });
   it("is silent for a blank screen", () => {
-    expect(waveOf(profileOf(new Uint8ClampedArray(PW * PH * 4), STANDARDS.ntsc, "stripes", 0.5))).toBeNull();
+    expect(waveOf(profileOf(new Uint8ClampedArray(PW * PH * 4), STANDARDS.ntsc, "stripes", 0.5), STANDARDS.ntsc.field)).toBeNull();
+  });
+});
+
+describe("loudness", () => {
+  const aLoud = (h: { re: Float32Array; im: Float32Array }, f0: number) => {
+    let p = 0;
+    for (let k = 1; k < h.re.length; k++) p += (h.re[k] ** 2 + h.im[k] ** 2) * aWeight(k * f0) ** 2;
+    return Math.sqrt(p / 2);
+  };
+  it("every picture sounds equally loud, in both modes and at any stripe count", () => {
+    for (const mode of ["stripes", "text"] as const) for (const n of [2, 5, 13]) {
+      const f0 = oscHz(mode, n, STANDARDS.ntsc, 0);
+      expect(aLoud(waveOf(profileOf(stripes(n), STANDARDS.ntsc, mode, 0.5), f0)!, f0)).toBeCloseTo(LOUDNESS, 6);
+    }
   });
 });
 

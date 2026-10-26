@@ -77,7 +77,7 @@ export class CrtRig {
   private stripesChanged(tv: Tv, n: number) {
     tv.n = n;
     if (this.s.mode === "stripes") { tv.snow = 1; this.refresh(tv); tv.osd.textContent = n + "本"; }
-    else { this.retuneAll(); const nn = noteOf(stripeHz(n, STANDARDS[this.s.std], this.s.bend)); tv.osd.textContent = nn.name + nn.oct; }
+    else { this.retuneAll(); this.reprofile(tv); const nn = noteOf(stripeHz(n, STANDARDS[this.s.std], this.s.bend)); tv.osd.textContent = nn.name + nn.oct; }
     tv.osd.classList.add("show"); tv.osdT = 1.4;
   }
 
@@ -89,7 +89,8 @@ export class CrtRig {
   }
   private reprofile(tv: Tv) {
     const data = tv.pctx.getImageData(0, 0, PW, PH).data;
-    tv.coef = waveOf(profileOf(data, STANDARDS[this.s.std], this.s.mode, tv.profX));
+    const std = STANDARDS[this.s.std];
+    tv.coef = waveOf(profileOf(data, std, this.s.mode, tv.profX), oscHz(this.s.mode, tv.n, std, 0));
     this.applyWave(tv);
   }
   private refreshAll() { this.tvs.forEach((tv) => this.refresh(tv)); }
@@ -117,7 +118,8 @@ export class CrtRig {
   private oscHz(tv: Tv) { return oscHz(this.s.mode, tv.n, STANDARDS[this.s.std], this.s.bend); }
   private applyWave(tv: Tv) {
     if (!this.ac || !tv.voice) return;
-    if (tv.coef) tv.voice.osc.setPeriodicWave(this.ac.createPeriodicWave(tv.coef.re, tv.coef.im));
+    // levelled in waveOf already, so the browser mustn't normalise it again
+    if (tv.coef) tv.voice.osc.setPeriodicWave(this.ac.createPeriodicWave(tv.coef.re, tv.coef.im, { disableNormalization: true }));
     if (tv.touches.size) this.setLevel(tv, 0.01);
   }
   private setLevel(tv: Tv, tau: number) {

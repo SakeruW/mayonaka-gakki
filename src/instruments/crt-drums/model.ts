@@ -1,7 +1,7 @@
 // The picture is the sound: each set paints a picture, and the hand's pickup reads it one field at a time,
 // line by line, including the dark blanking lines. That brightness profile, repeated every field, is the waveform.
 
-import { crtPickupGain, fieldHz, harmonics, stripeHz, type FieldStandard, type Harmonics } from "../../engine/pattern-wave";
+import { crtPickupGain, fieldHz, harmonics, loudnessMatch, stripeHz, type FieldStandard, type Harmonics } from "../../engine/pattern-wave";
 
 export type Mode = "stripes" | "text";
 export type RGB = [number, number, number];
@@ -82,7 +82,17 @@ export function profileOf(rgba: ArrayLike<number>, std: FieldStandard, mode: Mod
   return mode === "text" ? p.subarray(0, V) : p;
 }
 
-export function waveOf(profile: Float32Array): Harmonics | null { return harmonics(profile, HARMONICS, crtPickupGain); }
+/** how loud every set sounds, A-weighted RMS, whatever its picture: stripes and letters, few stripes or many */
+export const LOUDNESS = 0.22;
+
+/**
+ * The wave the pickup hears from one profile played at f0 Hz: its harmonics shaped by the pickup (by frequency, so both
+ * modes are treated alike), then levelled so every picture sounds equally loud. Null for a flat picture.
+ */
+export function waveOf(profile: Float32Array, f0: number): Harmonics | null {
+  const h = harmonics(profile, HARMONICS, (k) => crtPickupGain(k * f0));
+  return h && loudnessMatch(h, f0, LOUDNESS);
+}
 
 /**
  * The oscillator rate. In stripe mode it runs at the field rate and the stripes carry the pitch;
