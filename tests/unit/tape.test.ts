@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Head, hissLevel, readTape, recordSample, toneHz, wrap } from "../../src/engine/tape";
 import {
-  LEVER, SUPPLY_R, TAPE_SECONDS, demoLoop, handSpeed, leverAngle, leverPoint, leverTape, reelAngle, reelOmega, tapeOut,
+  LEVER, SUPPLY_R, TAPE_SECONDS, demoLoop, handSpeed, leverAngle, leverPoint, leverReturn, leverTape, reelAngle, reelOmega, tapeOut,
   speedText, tapeState, timeText,
 } from "../../src/instruments/open-reel/model";
 
@@ -104,6 +104,13 @@ describe("the lever", () => {
     const seconds = leverTape(LEVER.min) - leverTape(LEVER.max);
     expect(seconds).toBeGreaterThan(0.5);
     expect(seconds).toBeLessThan(1.2);
+  });
+  it("springs back to rest when let go, from either end, within half a second", () => {
+    for (let phi of [LEVER.min, LEVER.max] as number[]) {
+      const t = (n: number) => { for (let i = 0; i < n; i++) phi = leverReturn(phi, 1 / 60); return phi; };
+      expect(Math.abs(t(6) - LEVER.rest)).toBeGreaterThan(0.1);    // a tenth of a second in: still on its way
+      expect(t(24)).toBe(LEVER.rest);
+    }
   });
 });
 

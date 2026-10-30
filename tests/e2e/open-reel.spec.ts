@@ -79,18 +79,36 @@ test("the tape is tied to the lever: swing it out and back and the tape is where
     let phi = up.phi;
     for (let i = 0; i < 8; i++) { phi += 0.06; const p = onArc(phi); await page.mouse.move(...d.at(p.x, p.y)); }
     await page.mouse.up();
+    await expect(state(page)).toHaveText("停止");                 // so the next round doesn't read this one's speed
   }
   await expect(state(page)).toHaveText("停止");
   await expect(position(page)).toHaveText(start);
 });
 
+test("let go, the lever springs back and leaves the tape where it was: each push moves further along", async ({ page }) => {
+  const seconds = async () => { const [m, s] = (await position(page).innerText()).split(":"); return Number(m) * 60 + Number(s); };
+  let last = await seconds();
+  for (let push = 0; push < 3; push++) {
+    await page.keyboard.down("ArrowRight"); await page.waitForTimeout(400); await page.keyboard.up("ArrowRight");
+    await expect(state(page)).toHaveText("停止");
+    await page.waitForTimeout(500);                              // the lever is back at rest
+    const now = await seconds();
+    expect(now).toBeGreaterThan(last + 0.1);                     // further along than the last push left it
+    await page.waitForTimeout(300);
+    expect(await seconds()).toBe(now);                           // and the spring didn't pull the tape back
+    last = now;
+  }
+});
+
 test("holding ↑ → or ↓ ← swings the lever from the keyboard", async ({ page }) => {
+  // a swing from rest to either end takes a quarter second, so look often
+  const often = { intervals: [20] };
   await page.keyboard.down("ArrowRight");
-  await expect.poll(() => speedValue(page)).toBeGreaterThan(0.3);
+  await expect.poll(() => speedValue(page), often).toBeGreaterThan(0.3);
   await page.keyboard.up("ArrowRight");
   await expect(state(page)).toHaveText("停止", { timeout: 2000 });
   await page.keyboard.down("ArrowLeft");
-  await expect.poll(() => speedValue(page)).toBeLessThan(-0.3);
+  await expect.poll(() => speedValue(page), often).toBeLessThan(-0.3);
   await page.keyboard.up("ArrowLeft");
 });
 

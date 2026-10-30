@@ -1,13 +1,14 @@
 // The running deck: an upright box with one reel on top, the tape down past the heads and out of a slot to the lever
-// hinged outside the box; the playback head and the VU needle. The lever says where the tape is; the head, on the audio
-// thread, takes it there and reports back how it went, and the drawing follows that. The view hands in the REC switch
+// hinged outside the box; the playback head and the VU needle. The lever says where the tape is while a hand holds it;
+// let go and a spring brings it back to rest, leaving the tape where it was, so pushes move you along the tape. The head,
+// on the audio thread, takes the tape there and reports back how it went, and the drawing follows that. The view hands in the REC switch
 // and gets readouts back.
 
 import { createOutput, ensureAudio, setAudioSession, tanhCurve, type Output } from "../../engine/audio";
 import { onFrame } from "../../engine/loop";
 import { createTapeHead, wrap, type TapeHead } from "../../engine/tape";
 import workletUrl from "./tape-worklet.ts?worker&url";
-import { DECK, HUB_R, LEVER, SLOT, SUPPLY_R, TAPE_RATE, TAPE_SECONDS, demoLoop, leverAngle, leverPoint, leverTape, reelAngle } from "./model";
+import { DECK, HUB_R, LEVER, SLOT, SUPPLY_R, TAPE_RATE, TAPE_SECONDS, demoLoop, leverAngle, leverPoint, leverReturn, leverTape, reelAngle } from "./model";
 
 export interface DeckSettings { rec: boolean }
 export interface Readout { s: number; pos: number; recording: boolean }
@@ -36,6 +37,7 @@ export class TapeRig {
   private travelBase = 0;              // travel before the head took over
   private here: number;                // where the lever had the tape last frame, for the deck's own reckoning
   private phi: number = LEVER.rest;    // the lever's swing below the horizontal
+  private slip = 0;                    // tape seconds the tape has stayed behind while the lever sprang back
   private keyDir = 0;                  // ↑ ↓ (or ← →) swing the lever from the keyboard
   private lever: LeverHand | null = null;
   private ctx: CanvasRenderingContext2D;
@@ -59,7 +61,7 @@ export class TapeRig {
   constructor(private cv: HTMLCanvasElement, private needle: HTMLElement, settings: DeckSettings,
               private onReadout: (r: Readout) => void, private onMic: (m: MicState) => void) {
     this.s = { ...settings };
-    this.here = leverTape(this.phi);
+    this.here = this.tapeAt();
     this.ctx = cv.getContext("2d")!;
     this.bindInput();
     this.cleanup.push(onFrame(this.frame));
@@ -108,8 +110,10 @@ export class TapeRig {
   /** the head records while REC is on and the mic is open */
   private arm() { this.head?.setArmed(this.s.rec && !!this.mic); }
 
+  /** where the hand has the tape, in tape seconds */
+  private tapeAt() { return leverTape(this.phi) + this.slip; }
   /** the lever has moved: tell the head where the tape is now, to get there over `seconds` */
-  private moved(seconds: number) { this.head?.lever(leverTape(this.phi), seconds); }
+  private moved(seconds: number) { this.head?.lever(this.tapeAt(), seconds); }
 
   private async openMic() {
     this.wake();
@@ -195,8 +199,13 @@ export class TapeRig {
       // the keyboard swings the lever at a steady pace, about a full swing in half a second
       this.phi = Math.max(LEVER.min, Math.min(LEVER.max, this.phi - this.keyDir * 2.2 * dt));
       this.moved(dt);
+    } else if (!this.lever && this.phi !== LEVER.rest) {
+      // let go: the spring brings the lever back to rest, and the tape stays where the hand left it
+      const held = this.tapeAt();
+      this.phi = leverReturn(this.phi, dt);
+      this.slip = held - leverTape(this.phi);
     }
-    const here = leverTape(this.phi), r = this.head?.readout();
+    const here = this.tapeAt(), r = this.head?.readout();
     if (r) {
       this.speed = r.speed; this.pos = r.pos; this.travel = this.travelBase + r.travel;
     } else {

@@ -159,5 +159,17 @@ export function tapeOut(phi: number) { const t = leverPoint(phi, LEVER.tieAt); r
 /** where the lever has the tape, in tape seconds: more tape out of the box is further forward */
 export function leverTape(phi: number) { return LEVER.gain * tapeOut(phi) / tapeUnitsPerSecond(); }
 
+/** s: how quickly the spring brings a let-go lever back to rest */
+export const SPRING = 0.12;
+
+/**
+ * A spring brings a let-go lever back to rest. The tape is only held while a hand holds the lever, so it stays where
+ * it was: a push and let go moves you along the tape by up to a quarter second, forwards or back.
+ */
+export function leverReturn(phi: number, dt: number) {
+  const next = LEVER.rest + (phi - LEVER.rest) * Math.exp(-dt / SPRING);
+  return Math.abs(next - LEVER.rest) < 0.01 ? LEVER.rest : next;   // the last half degree is too little to see
+}
+
 /** how far the tape travels, in deck units, each second at s = 1 */
 export function tapeUnitsPerSecond() { return V0 * DECK.reel.r; }
