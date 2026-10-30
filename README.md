@@ -1,4 +1,4 @@
-# 真夜中楽器 (mayonaka-gakki)
+# 真夜中の楽器 (mayonaka-gakki)
 
 Playable browser versions of the electromagnetic instruments (電磁楽器) built by Ei Wada.
 Each one makes its sound the way the real hardware does.
