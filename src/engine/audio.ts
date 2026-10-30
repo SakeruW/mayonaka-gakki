@@ -5,15 +5,18 @@
 let ctx: AudioContext | null = null;
 let unlockBound = false;
 let keepAwake: HTMLAudioElement | null = null;
+/** the browser took the audio session we asked for, so the silent audio element isn't needed */
+let hasSession = false;
 
 /** Call from inside a user gesture. Creates the context the first time and resumes it after that. */
 export function ensureAudio(): AudioContext | null {
   if (!ctx) {
-    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AC) return null;
+    // no webkitAudioContext fallback: the instruments build their nodes with constructors (new GainNode(ac, …)),
+    // which arrived in Safari together with the unprefixed AudioContext
+    if (!window.AudioContext) return null;
     // these are instruments: on iPhones, play like a music app does, even with the ringer on silent (Safari 16.4+)
-    setAudioSession("playback");
-    ctx = new AC();
+    hasSession = setAudioSession("playback");
+    ctx = new AudioContext();
     bindUnlock();
   }
   if (ctx.state !== "running") void ctx.resume();
@@ -25,20 +28,22 @@ export function audioContext(): AudioContext | null { return ctx; }
 
 /**
  * Safari's audio session (16.4+): "playback" plays like a music app, through the ringer switch, but may not record;
- * "play-and-record" is needed while the mic is open. Elsewhere this does nothing.
+ * "play-and-record" is needed while the mic is open. Elsewhere this does nothing. Says whether the browser took it.
  */
-export function setAudioSession(type: "playback" | "play-and-record") {
+export function setAudioSession(type: "playback" | "play-and-record"): boolean {
   const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
-  if (session) { try { session.type = type; } catch { /* older Safari: the silent audio element below covers playback */ } }
+  if (!session) return false;
+  try { session.type = type; return true; } catch { return false; /* older Safari: the silent audio element below covers playback */ }
 }
 
 /**
  * iPhones mute Web Audio when the ringer switch is on silent, but not media elements. A silent looping audio element
  * moves the whole page into media playback, which also carries the Web Audio. It covers iPhones older than Safari 16.4
- * and in-app browsers where the audio session can't be asked for. It has to start inside a gesture; it pauses while
- * the page is hidden.
+ * and in-app browsers where the audio session can't be asked for, and only those: where the session worked it would
+ * just be a silent track in Now Playing. It has to start inside a gesture; it pauses while the page is hidden.
  */
 function playThroughSilentMode() {
+  if (hasSession) return;
   const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
   if (!ios) return;
   if (!keepAwake) {
