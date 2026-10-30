@@ -7,14 +7,18 @@ export type Mode = "stripes" | "text";
 export type RGB = [number, number, number];
 export interface Pos { x: number; y: number }
 
-/** the sets, top row first; colours from the reference photo */
+/**
+ * The sets, top row first; colours from the reference photo. Stripe counts are whole numbers, so every note is a
+ * harmonic of the field (≈ 65.6 Hz on 60i): these six are the harmonics that land within 10¢ of a note, each a
+ * different one, bottom shelf C4 E4 G4 and top shelf D5 B5 A6.
+ */
 export const SETS = [
-  { n: 5, hue: "#2d5cff", hi: "#a8d8ff", key: "q" },
-  { n: 6, hue: "#ff3d14", hi: "#ffd86b", key: "w" },
-  { n: 8, hue: "#1fc4ec", hi: "#d6f7ff", key: "e" },
-  { n: 2, hue: "#1fc4ec", hi: "#d6f7ff", key: "a" },
-  { n: 3, hue: "#ff3d14", hi: "#ffd86b", key: "s" },
-  { n: 4, hue: "#2d5cff", hi: "#a8d8ff", key: "d" },
+  { n: 9, hue: "#2d5cff", hi: "#a8d8ff", key: "q" },
+  { n: 15, hue: "#ff3d14", hi: "#ffd86b", key: "w" },
+  { n: 27, hue: "#1fc4ec", hi: "#d6f7ff", key: "e" },
+  { n: 4, hue: "#1fc4ec", hi: "#d6f7ff", key: "a" },
+  { n: 5, hue: "#ff3d14", hi: "#ffd86b", key: "s" },
+  { n: 6, hue: "#2d5cff", hi: "#a8d8ff", key: "d" },
 ] as const;
 
 /** offscreen picture size */
