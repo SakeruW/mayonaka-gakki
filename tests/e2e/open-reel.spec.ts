@@ -67,6 +67,23 @@ test("swinging the lever drags the tape across the head and back; holding it sti
   expect(errors).toEqual([]);
 });
 
+test("the tape is tied to the lever: swing it out and back and the tape is where it started", async ({ page }) => {
+  await page.keyboard.press("ArrowRight");                       // wakes the audio, so the head on the audio thread does the moving
+  await page.waitForTimeout(300);
+  const start = await position(page).innerText();
+  const d = await deck(page);
+  for (let round = 0; round < 3; round++) {
+    const up = await rock(page, -0.06, 8);
+    expect(up.extreme).toBeGreaterThanOrEqual(0.1);
+    await expect(position(page)).not.toHaveText(start);
+    let phi = up.phi;
+    for (let i = 0; i < 8; i++) { phi += 0.06; const p = onArc(phi); await page.mouse.move(...d.at(p.x, p.y)); }
+    await page.mouse.up();
+  }
+  await expect(state(page)).toHaveText("停止");
+  await expect(position(page)).toHaveText(start);
+});
+
 test("holding ↑ → or ↓ ← swings the lever from the keyboard", async ({ page }) => {
   await page.keyboard.down("ArrowRight");
   await expect.poll(() => speedValue(page)).toBeGreaterThan(0.3);

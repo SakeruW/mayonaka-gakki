@@ -1,7 +1,7 @@
 // An open-reel deck played the Open Reel Ensemble way: the box stands upright with one reel on top; the tape runs down
 // past the heads, out through a slot in the side, and is tied to the tip of a lever planted outside the box.
-// Rocking the lever drags the tape across the head and back; a finger can also pull the tape or knock it against the head.
-// Tape speed s: 1 = the speed it was recorded at (19 cm/s), negative = backwards.
+// Rocking the lever drags the tape across the head and back: the tape is tied to it, so where the lever is says where
+// the tape is. Tape speed s: 1 = the speed it was recorded at (19 cm/s), negative = backwards.
 
 /** reel geometry, as fractions of the reel's flange radius: the hub, and how full the reel is */
 export const HUB_R = 0.3, SUPPLY_R = 0.8;
@@ -22,29 +22,12 @@ export const DECK = {
 /** at s = 1 a pack of radius 0.68 turns half a revolution a second, about what a 7-inch reel does at 19 cm/s */
 export const V0 = 2 * Math.PI * 0.5 * 0.68;
 
-/**
- * Nothing drives the tape: once the hands stop, the reel's brake and the tape's own tension stop it.
- * Friction takes a steady bite as well as a proportional one, so it stops dead within a third of a second.
- */
-export function tapeStep(s: number, dt: number): number {
-  let next = s * Math.exp(-dt / 0.16);
-  next -= Math.sign(next) * Math.min(Math.abs(next), 1.6 * dt);
-  return Math.abs(next) < 0.002 ? 0 : next;
-}
-
 /** a reel turned by hand at ω rad/s drags the tape at this speed */
 export function handSpeed(omega: number, packR: number) { return omega * packR / V0; }
 /** and the tape turns a reel at this many rad/s */
 export function reelOmega(s: number, packR: number) { return s * V0 / packR; }
-
-/** a playback head hears the change in the tape's field, so its output fades away as the tape comes to a stop */
-export function headOutput(s: number) { return Math.min(1, Math.abs(s) / 0.04); }
-
-/** tape loses its top end as it slows: the head gap only resolves short wavelengths at speed */
-export function toneHz(s: number) { return Math.max(180, Math.min(16000, 16000 * Math.pow(Math.abs(s), 0.9))); }
-
-/** tape hiss rises with speed across the head */
-export function hissLevel(s: number, contact: number) { return 0.006 * Math.min(1.5, Math.abs(s)) * Math.min(1, contact); }
+/** so the reel's angle, once `travel` tape seconds have gone by */
+export function reelAngle(travel: number, packR: number) { return travel * V0 / packR; }
 
 // ---------- readouts ----------
 
@@ -173,8 +156,8 @@ export function leverAngle(x: number, y: number) {
 /** how much tape is out of the box, slot to tie, for a swing */
 export function tapeOut(phi: number) { const t = leverPoint(phi, LEVER.tieAt); return Math.hypot(t.x - SLOT.x, t.y - SLOT.y); }
 
-/** tape speed from the tape out of the box changing at v deck units/s: more tape out is forward */
-export function leverSpeed(v: number) { return LEVER.gain * v / tapeUnitsPerSecond(); }
+/** where the lever has the tape, in tape seconds: more tape out of the box is further forward */
+export function leverTape(phi: number) { return LEVER.gain * tapeOut(phi) / tapeUnitsPerSecond(); }
 
 /** how far the tape travels, in deck units, each second at s = 1 */
 export function tapeUnitsPerSecond() { return V0 * DECK.reel.r; }

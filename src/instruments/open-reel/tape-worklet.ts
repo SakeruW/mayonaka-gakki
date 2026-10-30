@@ -1,43 +1,37 @@
-// The playback head, on the audio thread: moves along the tape loop at the rate it is given, sample by sample,
-// so a hand on the reel scrubs smoothly in both directions. When armed it records its input onto the tape.
+// The playback head, on the audio thread: the tape goes wherever the hand puts it, sample by sample, so a hand on the
+// lever scrubs smoothly in both directions. When armed it records its input onto the tape.
 
-import { runHead } from "../../engine/tape";
+import { Head, type HeadMessage } from "../../engine/tape";
 
 declare const sampleRate: number;
 declare function registerProcessor(name: string, ctor: unknown): void;
 declare class AudioWorkletProcessor { readonly port: MessagePort; constructor(options?: unknown); }
 
-interface Options { processorOptions: { tape: Float32Array; tapeRate: number } }
+interface Options { processorOptions: { tape: Float32Array; tapeRate: number; start: number; lever: number } }
+
+const REPORT_EVERY = 256;   // samples: often enough that the reel and the display move smoothly
 
 class TapeHeadProcessor extends AudioWorkletProcessor {
-  static get parameterDescriptors() {
-    return [
-      { name: "rate", defaultValue: 0, minValue: -64, maxValue: 64, automationRate: "a-rate" },
-      { name: "contact", defaultValue: 1, minValue: 0, maxValue: 4, automationRate: "a-rate" },
-      { name: "flutter", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
-    ];
-  }
-
-  private tape: Float32Array;
-  private step: number;       // tape samples per output sample at rate 1
-  private state = { pos: 0, t: 0 };
-  private recording = false;
+  private head: Head;
+  private tapeRate: number;
   private sinceReport = 0;
 
   constructor(options: Options) {
     super();
-    this.tape = options.processorOptions.tape;
-    this.step = options.processorOptions.tapeRate / sampleRate;
-    this.port.onmessage = (e: MessageEvent<{ record?: boolean }>) => { if (typeof e.data.record === "boolean") this.recording = e.data.record; };
+    const { tape, tapeRate, start, lever } = options.processorOptions;
+    this.head = new Head(tape, tapeRate, sampleRate, start, lever);
+    this.tapeRate = tapeRate;
+    this.port.onmessage = (e: MessageEvent<HeadMessage>) => {
+      if ("lever" in e.data) this.head.lever(...e.data.lever);
+      else this.head.armed = e.data.armed;
+    };
   }
 
-  process(inputs: Float32Array[][], outputs: Float32Array[][], params: Record<string, Float32Array>) {
-    const out = outputs[0][0], rate = params.rate, contact = params.contact;
-    runHead(this.state, this.tape, this.step, out, inputs[0]?.[0],
-      (i) => (rate.length > 1 ? rate[i] : rate[0]), (i) => (contact.length > 1 ? contact[i] : contact[0]),
-      params.flutter[0], this.recording, sampleRate);
+  process(inputs: Float32Array[][], outputs: Float32Array[][]) {
+    const out = outputs[0][0], h = this.head;
+    h.run(out, inputs[0]?.[0]);
     this.sinceReport += out.length;
-    if (this.sinceReport >= 1024) { this.sinceReport = 0; this.port.postMessage({ pos: this.state.pos / (this.step * sampleRate) }); }
+    if (this.sinceReport >= REPORT_EVERY) { this.sinceReport = 0; this.port.postMessage({ pos: h.pos / this.tapeRate, travel: h.travel, speed: h.speed }); }
     return true;
   }
 }

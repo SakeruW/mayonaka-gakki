@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { readTape, recordSample, runHead, wowFlutter, wrap } from "../../src/engine/tape";
+import { Head, hissLevel, readTape, recordSample, toneHz, wrap } from "../../src/engine/tape";
 import {
-  LEVER, SUPPLY_R, TAPE_SECONDS, demoLoop, handSpeed, hissLevel, leverAngle, leverPoint, leverSpeed, reelOmega, tapeOut, tapeUnitsPerSecond, 
-  speedText, tapeState, tapeStep, timeText, toneHz,
+  LEVER, SUPPLY_R, TAPE_SECONDS, demoLoop, handSpeed, leverAngle, leverPoint, leverTape, reelAngle, reelOmega, tapeOut,
+  speedText, tapeState, timeText,
 } from "../../src/instruments/open-reel/model";
 
 describe("tape head maths", () => {
@@ -16,41 +16,74 @@ describe("tape head maths", () => {
     expect(readTape(tape, 10.5)).toBeCloseTo(Math.sin(10.5 / 4), 2);
     expect(readTape(tape, -54)).toBeCloseTo(tape[10], 6);   // backwards past the splice
   });
-  it("wobbles the speed by a fraction of a percent", () => {
-    for (let t = 0; t < 2; t += 0.01) expect(Math.abs(wowFlutter(t, 1) - 1)).toBeLessThan(0.003);
-    expect(wowFlutter(0.3, 0)).toBe(1);
-  });
 });
 
 describe("the head", () => {
-  const tape = Float32Array.from({ length: 100 }, (_, i) => i / 100);
-  const run = (rate: number, rec?: Float32Array) => {
-    const t = tape.slice(), out = new Float32Array(10), st = { pos: 20, t: 0 };
-    runHead(st, t, 1, out, rec, () => rate, () => 1, 0, !!rec, 44100);
-    return { out, st, t };
+  const SR = 48000, RATE = 32000, BLOCK = 128;
+  /** a head over a second of rising tape, at 0.25 s */
+  const make = (tape = Float32Array.from({ length: RATE }, (_, i) => i / RATE)) => new Head(tape, RATE, SR, 0.25, 0);
+  /** run `secs` of audio, returning every sample the head put out */
+  const play = (h: Head, secs: number, input?: (i: number) => number) => {
+    const n = Math.round(secs * SR / BLOCK), all: number[] = [];
+    for (let b = 0; b < n; b++) {
+      const out = new Float32Array(BLOCK), inp = input ? Float32Array.from({ length: BLOCK }, (_, i) => input(b * BLOCK + i)) : undefined;
+      h.run(out, inp); all.push(...out);
+    }
+    return all;
   };
-  it("reads the tape forwards at 1×", () => {
-    const { out, st } = run(1);
-    expect(out[0]).toBeCloseTo(0.2, 5); expect(out[9]).toBeCloseTo(0.29, 5); expect(st.pos).toBe(30);
-  });
-  it("reads it backwards at −1×", () => {
-    const { out, st } = run(-1);
-    expect(out[1]).toBeCloseTo(0.19, 5); expect(st.pos).toBe(10);
-  });
-  it("records onto the tape just as it passes", () => {
-    const { t } = run(1, new Float32Array(10).fill(0.5));
-    expect(t[25]).toBeCloseTo(recordSample(0.5), 6);
-    expect(t[35]).toBeCloseTo(0.35, 6);
-  });
-});
 
-describe("the tape on its own", () => {
-  const run = (s: number, secs: number) => { for (let i = 0; i < secs * 60; i++) s = tapeStep(s, 1 / 60); return s; };
-  it("stops dead within a third of a second once nothing moves it, either way", () => {
-    expect(run(1, 0.1)).toBeLessThan(0.6);
-    expect(run(1, 0.1)).toBeGreaterThan(0.1);
-    expect(run(1, 0.4)).toBe(0);
-    expect(run(-2, 0.6)).toBe(0);
+  it("runs the tape at the speed the hand moves it: 0.2 s of tape over 0.2 s is 1×, forwards or back", () => {
+    const h = make();
+    h.lever(0.2, 0.2); play(h, 0.1);
+    expect(h.speed).toBeCloseTo(1, 3);
+    play(h, 0.2);
+    expect(h.speed).toBeCloseTo(0, 6);
+    expect(h.pos / RATE).toBeCloseTo(0.45, 6);
+    h.lever(0, 0.1); play(h, 0.05);
+    expect(h.speed).toBeCloseTo(-2, 3);
+  });
+
+  it("comes back to the same place on the tape however the hand rocks it", () => {
+    const h = make();
+    // irregular moves, as pointer events come, there and back a few times
+    let at = 0;
+    for (let k = 0; k < 40; k++) {
+      at = k % 10 < 5 ? at + 0.03 + 0.02 * Math.sin(k) : at - 0.03 - 0.02 * Math.sin(k);
+      h.lever(at, 0.004 + 0.012 * ((k * 7) % 5) / 4); play(h, 0.005 + 0.003 * (k % 3));
+    }
+    h.lever(0, 0.02); play(h, 0.2);
+    expect(h.pos / RATE).toBeCloseTo(0.25, 6);
+    expect(h.travel).toBeCloseTo(0, 6);
+  });
+
+  it("is silent while the tape stands still, and plays while it moves", () => {
+    const h = make(Float32Array.from({ length: RATE }, (_, i) => Math.sin(i / 5)));
+    const peak = (xs: number[]) => Math.max(...xs.map(Math.abs));
+    expect(peak(play(h, 0.05))).toBe(0);
+    h.lever(0.3, 0.3);
+    expect(peak(play(h, 0.2))).toBeGreaterThan(0.1);
+  });
+
+  it("records over every tape sample it crosses, even fast, so nothing old shows through", () => {
+    const tape = new Float32Array(RATE).fill(0.9), h = make(tape);
+    h.armed = true;
+    h.lever(0.34, 0.2);                                  // 1.7×: more than one tape sample per output sample
+    play(h, 0.3, () => 0.5);
+    const from = Math.round(0.30 * RATE), to = Math.round(0.55 * RATE);   // past the start, where the filter has settled
+    for (let j = from; j < to; j++) expect(tape[j]).toBeCloseTo(recordSample(0.5), 3);
+    expect(tape[Math.round(0.7 * RATE)]).toBeCloseTo(0.9, 6);   // beyond where the tape went
+  });
+
+  it("keeps the monitor off while recording and writes nothing running backwards", () => {
+    const tape = new Float32Array(RATE).fill(0.3), h = make(tape);
+    h.armed = true;
+    h.lever(0.2, 0.2);
+    const out = play(h, 0.2, () => 0.5);
+    expect(Math.max(...out.slice(out.length / 2).map(Math.abs))).toBeLessThan(0.01);
+    play(h, 0.05, () => 0.5);                             // the tape comes to a stop
+    const before = tape.slice();
+    h.lever(0, 0.2); play(h, 0.25, () => -0.5);
+    expect(tape).toEqual(before);
   });
 });
 
@@ -62,12 +95,13 @@ describe("the lever", () => {
     expect(leverAngle(LEVER.hingeX + 0.1, LEVER.hingeY + 5)).toBe(LEVER.max);  // as far down
   });
   it("draws tape out of the box as it swings up, and lets it back in as it swings down", () => {
-    for (let p = LEVER.min; p < LEVER.max - 0.05; p += 0.05) expect(tapeOut(p)).toBeGreaterThan(tapeOut(p + 0.05));
-    expect(leverSpeed(1)).toBeGreaterThan(0);
-    expect(leverSpeed(-1)).toBeCloseTo(-leverSpeed(1), 9);
+    for (let p = LEVER.min; p < LEVER.max - 0.05; p += 0.05) {
+      expect(tapeOut(p)).toBeGreaterThan(tapeOut(p + 0.05));
+      expect(leverTape(p)).toBeGreaterThan(leverTape(p + 0.05));   // up is further forward on the tape
+    }
   });
   it("a full swing runs most of a second of tape past the head", () => {
-    const seconds = LEVER.gain * (tapeOut(LEVER.min) - tapeOut(LEVER.max)) / tapeUnitsPerSecond();
+    const seconds = leverTape(LEVER.min) - leverTape(LEVER.max);
     expect(seconds).toBeGreaterThan(0.5);
     expect(seconds).toBeLessThan(1.2);
   });
@@ -77,14 +111,17 @@ describe("the reel", () => {
   it("a hand on the reel and the tape agree on speed", () => {
     expect(handSpeed(reelOmega(1.3, SUPPLY_R), SUPPLY_R)).toBeCloseTo(1.3, 9);
   });
+  it("turns as far as the tape has gone", () => {
+    expect(reelAngle(2, SUPPLY_R)).toBeCloseTo(reelOmega(1, SUPPLY_R) * 2, 9);
+  });
 });
 
 describe("tape sound", () => {
   it("loses its top end as it slows and hisses more as it speeds up", () => {
     expect(toneHz(0.2)).toBeLessThan(toneHz(1));
     expect(toneHz(0)).toBeGreaterThan(100);
-    expect(hissLevel(2, 1)).toBeGreaterThan(hissLevel(0.5, 1));
-    expect(hissLevel(1, 0)).toBe(0);
+    expect(hissLevel(2)).toBeGreaterThan(hissLevel(0.5));
+    expect(hissLevel(0)).toBe(0);
   });
 });
 

@@ -1,15 +1,13 @@
 // The running deck: an upright box with one reel on top, the tape down past the heads and out of a slot to the lever
-// hinged outside the box; the playback head and the VU needle. Everything per-frame lives here, outside React.
-// The view hands in the REC switch and gets readouts back.
+// hinged outside the box; the playback head and the VU needle. The lever says where the tape is; the head, on the audio
+// thread, takes it there and reports back how it went, and the drawing follows that. The view hands in the REC switch
+// and gets readouts back.
 
 import { ensureAudio, setAudioSession } from "../../engine/audio";
 import { onFrame } from "../../engine/loop";
-import { createTapeHead, type TapeHead } from "../../engine/tape";
+import { createTapeHead, wrap, type TapeHead } from "../../engine/tape";
 import workletUrl from "./tape-worklet.ts?worker&url";
-import {
-  DECK, HUB_R, LEVER, SLOT, SUPPLY_R, TAPE_RATE, TAPE_SECONDS, demoLoop, headOutput, hissLevel, leverAngle, leverPoint, leverSpeed, reelOmega,
-  tapeOut, tapeStep, toneHz,
-} from "./model";
+import { DECK, HUB_R, LEVER, SLOT, SUPPLY_R, TAPE_RATE, TAPE_SECONDS, demoLoop, leverAngle, leverPoint, leverTape, reelAngle } from "./model";
 
 export interface DeckSettings { rec: boolean }
 export interface Readout { s: number; pos: number; recording: boolean }
@@ -17,7 +15,7 @@ export type MicState = "off" | "on" | "denied";
 
 type Pt = { x: number; y: number };
 /** a hand on the lever: the only thing that moves the tape */
-interface LeverHand { id: number; at: number; v: number; offset: number; lastOut: number }
+interface LeverHand { id: number; at: number; offset: number }
 
 const ASPECT = DECK.width / DECK.height;
 
@@ -25,13 +23,18 @@ const ASPECT = DECK.width / DECK.height;
 let builtIn: Float32Array | null = null;
 const builtInTape = () => (builtIn ??= demoLoop(TAPE_RATE));
 const REPORT_EVERY = 0.08;
-const STALE_MS = 60;          // a hand that hasn't moved for this long is holding still
+/** s: each move of the hand is spread over the time since the last one, within these bounds, so the tape runs smoothly */
+const RAMP_MIN = 0.004, RAMP_MAX = 0.04;
 
 export class TapeRig {
   private s: DeckSettings;
-  private speed = 0;                   // tape speed, × recorded speed
-  private pos = 0;                     // where the head is on the tape, in tape seconds: kept here so the display moves with the reel, audio or not
-  private reelAngle = 0;
+  // what the tape is doing, from the head once it runs; until then (or with no audio at all) the deck works it out
+  // itself, so the reel and the display move from the first touch
+  private speed = 0;                   // × recorded speed
+  private pos = 0;                     // where the head is on the tape, in tape seconds
+  private travel = 0;                  // tape seconds gone by in all: turns the reel
+  private travelBase = 0;              // travel before the head took over
+  private here: number;                // where the lever had the tape last frame, for the deck's own reckoning
   private phi: number = LEVER.rest;    // the lever's swing below the horizontal
   private keyDir = 0;                  // ↑ ↓ (or ← →) swing the lever from the keyboard
   private lever: LeverHand | null = null;
@@ -41,8 +44,6 @@ export class TapeRig {
   private ac: AudioContext | null = null;
   private head: TapeHead | null = null;
   private nodes: AudioNode[] = [];
-  private tone: BiquadFilterNode | null = null;
-  private hiss: GainNode | null = null;
   private meter: AnalyserNode | null = null;
   private meterBuf = new Float32Array(1024);
   private vu = -30;
@@ -57,6 +58,7 @@ export class TapeRig {
   constructor(private cv: HTMLCanvasElement, private needle: HTMLElement, settings: DeckSettings,
               private onReadout: (r: Readout) => void, private onMic: (m: MicState) => void) {
     this.s = { ...settings };
+    this.here = leverTape(this.phi);
     this.ctx = cv.getContext("2d")!;
     this.bindInput();
     this.cleanup.push(onFrame(this.frame));
@@ -81,31 +83,33 @@ export class TapeRig {
     const ac = ensureAudio();
     if (!ac || this.ac) return;
     this.ac = ac;
-    createTapeHead(ac, { tape: builtInTape(), tapeRate: TAPE_RATE, workletUrl }).then((head) => {
+    // the head starts where the deck has got to by the time it is ready, so nothing jumps
+    const at = () => ({ start: this.pos, lever: this.here });
+    createTapeHead(ac, { tape: builtInTape(), tapeRate: TAPE_RATE, workletUrl, at }).then((head) => {
       if (!this.alive) { head.dispose(); return; }
-      // the playback amp: a little head saturation, the tape's speed-dependent top end, hiss, then the line out
+      // the playback amp (the head itself gives the tape's speed-dependent top end and hiss): a little head saturation,
+      // then the line out
       const c = new Float32Array(1024);
       for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; c[i] = Math.tanh(1.5 * x) / Math.tanh(1.5); }
       const sat = new WaveShaperNode(ac, { curve: c, oversample: "2x" });
-      const tone = new BiquadFilterNode(ac, { type: "lowpass", frequency: 16000, Q: 0.6 });
       const mix = new GainNode(ac, { gain: 0.9 });
       const comp = new DynamicsCompressorNode(ac, { threshold: -10, ratio: 3, attack: 0.004, release: 0.2 });
-      const noise = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), nd = noise.getChannelData(0);
-      for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-      const hissSrc = new AudioBufferSourceNode(ac, { buffer: noise, loop: true });
-      const hissHp = new BiquadFilterNode(ac, { type: "highpass", frequency: 3000 });
-      const hiss = new GainNode(ac, { gain: 0 });
       const meter = new AnalyserNode(ac, { fftSize: 1024 });
-      head.node.connect(sat).connect(tone).connect(mix);
-      hissSrc.connect(hissHp).connect(hiss).connect(mix);
-      mix.connect(comp).connect(ac.destination);
+      head.node.connect(sat).connect(mix).connect(comp).connect(ac.destination);
       mix.connect(meter);
-      hissSrc.start();
-      this.head = head; this.tone = tone; this.hiss = hiss; this.meter = meter;
-      this.nodes = [sat, tone, mix, comp, hissSrc, hissHp, hiss, meter];
+      this.head = head; this.meter = meter;
+      this.nodes = [sat, mix, comp, meter];
+      this.travelBase = this.travel;
       if (this.micNode) this.micNode.connect(head.node);
+      this.arm();
     }, () => { /* no audio at all: the deck still moves */ });
   }
+
+  /** the head records while REC is on and the mic is open */
+  private arm() { this.head?.setArmed(this.s.rec && !!this.mic); }
+
+  /** the lever has moved: tell the head where the tape is now, to get there over `seconds` */
+  private moved(seconds: number) { this.head?.lever(leverTape(this.phi), seconds); }
 
   private async openMic() {
     this.wake();
@@ -120,6 +124,7 @@ export class TapeRig {
       this.mic = mic;
       this.micNode = this.ac.createMediaStreamSource(mic);
       if (this.head) this.micNode.connect(this.head.node);
+      this.arm();
       this.onMic("on");
     } catch {
       setAudioSession("playback");
@@ -132,15 +137,9 @@ export class TapeRig {
     this.micNode?.disconnect();
     this.mic?.getTracks().forEach((t) => t.stop());
     this.mic = null; this.micNode = null;
-    this.head?.setRecording(false);
+    this.arm();
     setAudioSession("playback");
   }
-
-  /**
-   * What the playback head passes on. It only hears the tape while the tape moves past it, so a stopped tape is silent;
-   * and the monitor is off while recording, so the speakers can't feed back into the mic.
-   */
-  private contact() { return this.recording ? 0 : headOutput(this.speed); }
 
   // ---------- a hand on the lever ----------
   private bindInput() {
@@ -158,17 +157,17 @@ export class TapeRig {
       const p = local(e);
       if (!onLever(p)) return;
       try { cv.setPointerCapture(e.pointerId); } catch { /* fine without capture */ }
-      this.lever = { id: e.pointerId, at: performance.now(), v: 0, offset: this.phi - leverAngle(p.x, p.y), lastOut: tapeOut(this.phi) };
+      this.lever = { id: e.pointerId, at: performance.now(), offset: this.phi - leverAngle(p.x, p.y) };
       cv.classList.add("down");
     };
+    // the tape follows the hand straight away, not a frame later
     const move = (e: PointerEvent) => {
       const lv = this.lever;
       if (!lv || lv.id !== e.pointerId) return;
       const now = performance.now(), p = local(e);
       this.phi = Math.max(LEVER.min, Math.min(LEVER.max, leverAngle(p.x, p.y) + lv.offset));
-      const out = tapeOut(this.phi), dt = Math.max(0.004, (now - lv.at) / 1000);
-      lv.v = lv.v * 0.4 + ((out - lv.lastOut) / dt) * 0.6;
-      lv.lastOut = out; lv.at = now;
+      this.moved(Math.max(RAMP_MIN, Math.min(RAMP_MAX, (now - lv.at) / 1000)));
+      lv.at = now;
     };
     const up = (e: PointerEvent) => { if (this.lever?.id === e.pointerId) { this.lever = null; cv.classList.remove("down"); } };
     const menu = (e: Event) => e.preventDefault();
@@ -191,33 +190,23 @@ export class TapeRig {
   }
 
   // ---------- loop ----------
-  private frame = (dt: number, now: number) => {
+  private frame = (dt: number) => {
     if (this.keyDir && !this.lever) {
       // the keyboard swings the lever at a steady pace, about a full swing in half a second
-      const before = tapeOut(this.phi);
       this.phi = Math.max(LEVER.min, Math.min(LEVER.max, this.phi - this.keyDir * 2.2 * dt));
-      this.speed = leverSpeed((tapeOut(this.phi) - before) / dt);
-    } else if (this.lever) {
-      // the tape follows the lever, a little gently so a wobbling finger doesn't jerk it; a lever held still holds it still
-      const lv = this.lever, v = now - lv.at > STALE_MS ? 0 : lv.v;
-      this.speed += (leverSpeed(v) - this.speed) * (1 - Math.exp(-dt / 0.06));
-    } else {
-      this.speed = tapeStep(this.speed, dt);
+      this.moved(dt);
     }
-    this.reelAngle += reelOmega(this.speed, SUPPLY_R) * dt;
-    this.pos = (((this.pos + this.speed * dt) % TAPE_SECONDS) + TAPE_SECONDS) % TAPE_SECONDS;
+    const here = leverTape(this.phi), r = this.head?.readout();
+    if (r) {
+      this.speed = r.speed; this.pos = r.pos; this.travel = this.travelBase + r.travel;
+    } else {
+      // no head running yet: the tape goes straight to where the lever has it, as the head will take it once it starts
+      const d = here - this.here;
+      this.speed = dt ? d / dt : 0; this.pos = wrap(this.pos + d, TAPE_SECONDS); this.travel += d;
+    }
+    this.here = here;
 
     this.recording = this.s.rec && !!this.mic && this.speed > 0.05;
-    const head = this.head;
-    if (this.ac && head) {
-      const t = this.ac.currentTime;
-      head.setRate(this.speed);
-      head.setContact(this.contact());
-      head.setFlutter(false);
-      head.setRecording(this.recording);
-      this.tone?.frequency.setTargetAtTime(toneHz(this.speed), t, 0.02);
-      this.hiss?.gain.setTargetAtTime(this.recording ? 0 : hissLevel(this.speed, 1), t, 0.03);
-    }
     this.drawVu(dt);
     this.fit();
     if (this.W > 40) this.draw();
@@ -346,7 +335,7 @@ export class TapeRig {
   /** a 7-inch reel, pale metal: brown tape pack, the flange with three windows, the hub keys */
   private drawReel() {
     const { ctx: c, U, dpr } = this, R = DECK.reel, F = R.r * U, pack = SUPPLY_R * F;
-    c.save(); c.translate(R.x * U, R.y * U); c.rotate(this.reelAngle);
+    c.save(); c.translate(R.x * U, R.y * U); c.rotate(reelAngle(this.travel, SUPPLY_R));
     const pg = c.createRadialGradient(0, 0, HUB_R * F, 0, 0, pack);
     pg.addColorStop(0, "#3a2414"); pg.addColorStop(1, "#6b4529");
     c.fillStyle = pg; c.beginPath(); c.arc(0, 0, pack, 0, Math.PI * 2); c.fill();
@@ -375,7 +364,7 @@ export class TapeRig {
     this.cleanup.forEach((f) => f());
     this.cleanup = [];
     this.head?.dispose();
-    for (const n of this.nodes) { if (n instanceof AudioBufferSourceNode) { try { n.stop(); } catch { /* stopped */ } } n.disconnect(); }
+    for (const n of this.nodes) n.disconnect();
     this.nodes = []; this.head = null;
     this.closeMic();
   }
