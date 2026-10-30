@@ -25,6 +25,9 @@
 .open-reel .rec-led { position: absolute; top: 6px; right: 7px; width: 8px; height: 8px; border-radius: 50%; background: #3a0e12; z-index: 2;
   box-shadow: inset 0 0 0 1px rgba(0,0,0,0.5); }
 .open-reel .rec-led.on { background: #ff3b3b; box-shadow: 0 0 8px 2px rgba(255,60,60,0.8); }
+.open-reel .rec-led.refused { animation: rec-refused 1.2s steps(1, end) 1; }
+@keyframes rec-refused { 0%, 34%, 68% { background: #ff3b3b; box-shadow: 0 0 8px 2px rgba(255,60,60,0.8); }
+                         17%, 51%, 85%, 100% { background: #3a0e12; box-shadow: none; } }
 
 /* REC: the shared key in the deck's charcoal, a red dot that lights while armed */
 .open-reel .key.rec { --key-bg: #33383a; --key-on-bg: #23272a; --key-side: #0b0d0e; }

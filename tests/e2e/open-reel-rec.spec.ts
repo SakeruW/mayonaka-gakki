@@ -57,3 +57,19 @@ test("switching REC off releases the microphone, and arming again reopens it", a
   await expect(page.locator(".open-reel .rec-led")).not.toHaveClass(/on/);
   await letGo(page);
 });
+
+test("a refused mic pops REC back up and flickers the lamp, and playback still works after", async ({ page }) => {
+  // the browser says no, as an iPhone does when the page can't record
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("denied", "NotAllowedError"));
+  });
+  await page.goto("/#open-reel");
+  const rec = page.getByRole("button", { name: "録音" }), led = page.locator(".open-reel .rec-led");
+  await rec.click();
+  await expect(rec).toHaveAttribute("aria-pressed", "false");
+  await expect(led).toHaveClass(/refused/);
+  await pushLever(page);
+  await expect(led).not.toHaveClass(/on/);
+  await expect(page.locator(".open-reel .vfd .note")).not.toHaveText("0:00.0");   // the tape still plays
+  await letGo(page);
+});

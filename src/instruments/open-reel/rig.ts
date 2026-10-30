@@ -2,7 +2,7 @@
 // hinged outside the box; the playback head and the VU needle. Everything per-frame lives here, outside React.
 // The view hands in the REC switch and gets readouts back.
 
-import { ensureAudio } from "../../engine/audio";
+import { ensureAudio, setAudioSession } from "../../engine/audio";
 import { onFrame } from "../../engine/loop";
 import { createTapeHead, type TapeHead } from "../../engine/tape";
 import workletUrl from "./tape-worklet.ts?worker&url";
@@ -109,7 +109,10 @@ export class TapeRig {
 
   private async openMic() {
     this.wake();
+    // no mic API at all on plain-http pages: browsers only allow microphones on secure (https) pages
     if (this.mic || !navigator.mediaDevices?.getUserMedia) { this.onMic(this.mic ? "on" : "denied"); return; }
+    // on iPhones a playback-only audio session may not record: ask for play-and-record while the mic is open
+    setAudioSession("play-and-record");
     try {
       const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       // REC may have been switched off, or the page left, while the browser was asking
@@ -119,6 +122,7 @@ export class TapeRig {
       if (this.head) this.micNode.connect(this.head.node);
       this.onMic("on");
     } catch {
+      setAudioSession("playback");
       this.onMic("denied");
     }
   }
@@ -129,6 +133,7 @@ export class TapeRig {
     this.mic?.getTracks().forEach((t) => t.stop());
     this.mic = null; this.micNode = null;
     this.head?.setRecording(false);
+    setAudioSession("playback");
   }
 
   /**

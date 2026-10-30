@@ -12,13 +12,15 @@ export default function OpenReel({ title }: { title: string }) {
   const needleRef = useRef<HTMLElement>(null);
   const rigRef = useRef<TapeRig | null>(null);
   const [rec, setRec] = useState(false);
+  // the mic was refused (or needs https): ● pops back up and the lamp flickers once so it isn't silent
+  const [refused, setRefused] = useState(0);
   const [readout, setReadout] = useState<Readout>({ s: 0, pos: 0, recording: false });
 
   const recRef = useRef(rec);
   useEffect(() => { recRef.current = rec; });
 
   useEffect(() => {
-    const rig = new TapeRig(deckRef.current!, needleRef.current!, { rec: recRef.current }, setReadout, (m) => { if (m === "denied") setRec(false); });
+    const rig = new TapeRig(deckRef.current!, needleRef.current!, { rec: recRef.current }, setReadout, (m) => { if (m === "denied") { setRec(false); setRefused((n) => n + 1); } });
     rigRef.current = rig;
     return () => { rig.dispose(); rigRef.current = null; };
   }, []);
@@ -51,7 +53,7 @@ export default function OpenReel({ title }: { title: string }) {
              note={timeText(readout.pos)} rest={Math.abs(readout.s) < 0.01} bar={readout.s / 2} />
         <div className="meter">
           <div className="vu" aria-hidden="true"><i ref={needleRef} className="needle" /></div>
-          <i className={"rec-led" + (readout.recording ? " on" : "")} aria-hidden="true" />
+          <i key={refused} className={"rec-led" + (readout.recording ? " on" : refused ? " refused" : "")} aria-hidden="true" />
         </div>
         <button type="button" className="key rec" aria-label="録音" aria-pressed={rec} onClick={() => { rigRef.current?.wake(); setRec((r) => !r); }}><i /></button>
       </div>
