@@ -236,12 +236,16 @@ export class CrtRig {
     this.alive = false;
     this.cleanup.forEach((f) => f());
     this.cleanup = [];
+    // fade out before taking the voices apart, so leaving mid-hit doesn't click
+    const voices = this.tvs.map((tv) => tv.voice);
     for (const tv of this.tvs) {
-      if (tv.voice) { try { tv.voice.osc.stop(); } catch { /* already stopped */ } tv.voice.osc.disconnect(); tv.voice.g.disconnect(); tv.voice = null; }
+      tv.voice = null;
       tv.root.classList.remove("lit");
       tv.tube.dispose();
     }
-    this.amp?.dispose();
+    this.amp?.dispose(() => {
+      for (const v of voices) if (v) { try { v.osc.stop(); } catch { /* already stopped */ } v.osc.disconnect(); v.g.disconnect(); }
+    });
     this.amp = null;
   }
 }

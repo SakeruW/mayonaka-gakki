@@ -63,27 +63,69 @@ function bindUnlock() {
   for (const n of ["pointerup", "touchend", "click", "keydown"]) window.addEventListener(n, resume, { passive: true });
 }
 
-/** tanh soft clip, 0 = nearly clean, 1 = heavily driven. */
-export function driveCurve(drive: number, size = 1024): Float32Array<ArrayBuffer> {
-  const k = 1 + drive * 7, c = new Float32Array(size);
+// ---------- the way out ----------
+
+let limiter: DynamicsCompressorNode | null = null;
+const FADE = 0.03;   // s: an instrument fades out over this when it closes
+
+/** in front of the speakers, shared by every instrument: a hard limiter, so nothing clips whichever is playing */
+function masterBus(ac: AudioContext) {
+  if (!limiter) {
+    limiter = new DynamicsCompressorNode(ac, { threshold: -3, knee: 0, ratio: 20, attack: 0.001, release: 0.1 });
+    limiter.connect(ac.destination);
+  }
+  return limiter;
+}
+
+export interface Output {
+  /** connect the instrument's last stage here */
+  node: GainNode;
+  /** fade out, then call `then` to take the instrument's nodes apart: closing mid-note doesn't click */
+  dispose(then?: () => void): void;
+}
+
+/** an instrument's way out to the speakers, at `gain` */
+export function createOutput(ac: AudioContext, gain = 1): Output {
+  const node = new GainNode(ac, { gain });
+  node.connect(masterBus(ac));
+  return {
+    node,
+    dispose(then) {
+      const t = ac.currentTime, g = node.gain;
+      g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0, t + FADE);
+      setTimeout(() => { node.disconnect(); then?.(); }, FADE * 1000 + 50);
+    },
+  };
+}
+
+// ---------- the amp ----------
+
+/** a tanh soft-clip curve for a WaveShaperNode: k = 1 is nearly clean, higher drives harder; ±1 stays ±1 */
+export function tanhCurve(k: number, size = 1024): Float32Array<ArrayBuffer> {
+  const c = new Float32Array(size);
   for (let i = 0; i < size; i++) { const x = i / (size - 1) * 2 - 1; c[i] = Math.tanh(k * x) / Math.tanh(k); }
   return c;
 }
 
-export interface Amp { input: GainNode; setDrive(drive: number): void; dispose(): void }
+/** tanh soft clip, 0 = nearly clean, 1 = heavily driven. */
+export function driveCurve(drive: number, size = 1024) { return tanhCurve(1 + drive * 7, size); }
+
+export interface Amp { input: GainNode; setDrive(drive: number): void; dispose(then?: () => void): void }
 
 /** A small guitar amp: high-pass 40 Hz → tanh drive → low-pass 5.2 kHz → gain → compressor → speakers. */
 export function createAmp(ac: AudioContext, drive = 0.45): Amp {
   const input = ac.createGain();
   const hp = new BiquadFilterNode(ac, { type: "highpass", frequency: 40 });
-  const shaper = new WaveShaperNode(ac, { curve: driveCurve(drive) });
+  // oversampled, so the drive's new harmonics above Nyquist don't fold back down
+  const shaper = new WaveShaperNode(ac, { curve: driveCurve(drive), oversample: "2x" });
   const lp = new BiquadFilterNode(ac, { type: "lowpass", frequency: 5200, Q: 0.5 });
-  const out = new GainNode(ac, { gain: 0.7 });
+  const level = new GainNode(ac, { gain: 0.7 });
   const comp = new DynamicsCompressorNode(ac, { threshold: -14, ratio: 4, attack: 0.003, release: 0.15 });
-  input.connect(hp).connect(shaper).connect(lp).connect(out).connect(comp).connect(ac.destination);
+  const out = createOutput(ac);
+  input.connect(hp).connect(shaper).connect(lp).connect(level).connect(comp).connect(out.node);
   return {
     input,
     setDrive(d) { shaper.curve = driveCurve(d); },
-    dispose() { for (const n of [input, hp, shaper, lp, out, comp]) n.disconnect(); },
+    dispose(then) { out.dispose(() => { for (const n of [input, hp, shaper, lp, level, comp]) n.disconnect(); then?.(); }); },
   };
 }

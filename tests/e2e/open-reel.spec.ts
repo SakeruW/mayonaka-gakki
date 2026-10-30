@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { brightness, collectErrors } from "./helpers";
+import { LISTEN, brightness, collectErrors, peak, resetPeak } from "./helpers";
 
 /** the tape's state word (停止, 再生, 逆再生, 録音), top left of its display */
 const state = (page: Page) => page.locator(".open-reel .vfd .top span").first();
@@ -124,32 +124,18 @@ test("once the lever is let go the tape falls silent: the VU needle comes back t
   await expect.poll(deg, { timeout: 4000 }).toBeLessThan(-46);   // -48 is silence
 });
 
-/** listens to what the deck sends to the speakers; plain JavaScript so the test compiler leaves it alone */
-const LISTEN = `
-  window.peak = 0;
-  const connect = AudioNode.prototype.connect;
-  AudioNode.prototype.connect = function (dest, ...rest) {
-    if (dest instanceof AudioDestinationNode && this instanceof DynamicsCompressorNode) {
-      const a = this.context.createAnalyser(), d = new Float32Array(2048);
-      a.fftSize = 2048; connect.call(this, a);
-      setInterval(() => { a.getFloatTimeDomainData(d); for (const v of d) window.peak = Math.max(window.peak, Math.abs(v)); }, 20);
-    }
-    return connect.call(this, dest, ...rest);
-  };`;
-
 for (const head of ["worklet", "main-thread"] as const) {
   test(`sound reaches the speakers while the lever swings (${head} head)`, async ({ page }) => {
     if (head === "main-thread") await page.addInitScript(() => { Object.defineProperty(BaseAudioContext.prototype, "audioWorklet", { get: () => undefined }); });
     await page.addInitScript(LISTEN);
     await page.reload();                                         // injected scripts only run on a real load
     await expect(state(page)).toHaveText("停止");
-    const peak = () => page.evaluate(() => (window as unknown as { peak: number }).peak);
     await page.keyboard.down("ArrowDown"); await page.waitForTimeout(700); await page.keyboard.up("ArrowDown");   // swung down: the tape plays back
     await page.waitForTimeout(500);
-    await page.evaluate(() => { (window as unknown as { peak: number }).peak = 0; });
+    await resetPeak(page);
     await page.waitForTimeout(400);
-    expect(await peak()).toBeLessThan(0.01);                    // nothing while the tape is still
+    expect(await peak(page)).toBeLessThan(0.01);                // nothing while the tape is still
     await page.keyboard.down("ArrowUp"); await page.waitForTimeout(450); await page.keyboard.up("ArrowUp");
-    expect(await peak()).toBeGreaterThan(0.1);                   // the loop, dragged past the head
+    expect(await peak(page)).toBeGreaterThan(0.1);              // the loop, dragged past the head
   });
 }

@@ -3,7 +3,7 @@
 // thread, takes it there and reports back how it went, and the drawing follows that. The view hands in the REC switch
 // and gets readouts back.
 
-import { ensureAudio, setAudioSession } from "../../engine/audio";
+import { createOutput, ensureAudio, setAudioSession, tanhCurve, type Output } from "../../engine/audio";
 import { onFrame } from "../../engine/loop";
 import { createTapeHead, wrap, type TapeHead } from "../../engine/tape";
 import workletUrl from "./tape-worklet.ts?worker&url";
@@ -44,6 +44,7 @@ export class TapeRig {
   private ac: AudioContext | null = null;
   private head: TapeHead | null = null;
   private nodes: AudioNode[] = [];
+  private out: Output | null = null;
   private meter: AnalyserNode | null = null;
   private meterBuf = new Float32Array(1024);
   private vu = -30;
@@ -89,13 +90,12 @@ export class TapeRig {
       if (!this.alive) { head.dispose(); return; }
       // the playback amp (the head itself gives the tape's speed-dependent top end and hiss): a little head saturation,
       // then the line out
-      const c = new Float32Array(1024);
-      for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; c[i] = Math.tanh(1.5 * x) / Math.tanh(1.5); }
-      const sat = new WaveShaperNode(ac, { curve: c, oversample: "2x" });
+      const sat = new WaveShaperNode(ac, { curve: tanhCurve(1.5), oversample: "2x" });
       const mix = new GainNode(ac, { gain: 0.9 });
       const comp = new DynamicsCompressorNode(ac, { threshold: -10, ratio: 3, attack: 0.004, release: 0.2 });
       const meter = new AnalyserNode(ac, { fftSize: 1024 });
-      head.node.connect(sat).connect(mix).connect(comp).connect(ac.destination);
+      this.out = createOutput(ac);
+      head.node.connect(sat).connect(mix).connect(comp).connect(this.out.node);
       mix.connect(meter);
       this.head = head; this.meter = meter;
       this.nodes = [sat, mix, comp, meter];
@@ -363,10 +363,11 @@ export class TapeRig {
     this.alive = false;
     this.cleanup.forEach((f) => f());
     this.cleanup = [];
-    this.head?.dispose();
-    for (const n of this.nodes) n.disconnect();
-    this.nodes = []; this.head = null;
     this.closeMic();
+    // fade out before taking the head and amp apart, so leaving mid-scratch doesn't click
+    const head = this.head, nodes = this.nodes;
+    this.out?.dispose(() => { head?.dispose(); for (const n of nodes) n.disconnect(); });
+    this.nodes = []; this.head = null; this.out = null;
   }
 }
 

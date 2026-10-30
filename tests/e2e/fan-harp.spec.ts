@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { brightness, collectErrors } from "./helpers";
+import { LISTEN, brightness, collectErrors, peak, resetPeak } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/#fan-harp");
@@ -36,6 +36,26 @@ test("dragging the pick onto the disc plays the ring under it", async ({ page })
   await expect(top(page)).toContainText("4輪目　32穴");
   await page.mouse.up();
   await expect(note(page)).toHaveText("--");
+});
+
+test("a held ring reaches the speakers, and falls silent when the tab hides even though frames stop", async ({ page }) => {
+  await page.addInitScript(LISTEN);
+  await page.reload();                                           // injected scripts only run on a real load
+  await expect(top(page)).toContainText("rpm");
+  await page.keyboard.down("1");
+  await expect.poll(() => peak(page)).toBeGreaterThan(0.05);
+  // a hidden tab: the browser stops drawing frames, but the audio plays on
+  await page.evaluate(() => { window.requestAnimationFrame = () => 0; });
+  await page.waitForTimeout(100);                                // the last frame has been and gone
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.waitForTimeout(200);
+  await resetPeak(page);
+  await page.waitForTimeout(400);
+  expect(await peak(page)).toBeLessThan(0.01);
+  await page.keyboard.up("1");
 });
 
 test("強 spins up to the full note", async ({ page }) => {

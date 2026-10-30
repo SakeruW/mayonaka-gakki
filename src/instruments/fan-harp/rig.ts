@@ -1,7 +1,9 @@
 // The running fan: motor, disc, bulb, the one Light-Pick, and a voice per ring into a small amp.
 // Everything per-frame lives here, outside React. The view hands in settings and gets tuner readings back.
+// What the pick hears is set the moment the pick or a key moves, not on the next frame, so a hand let go is silent
+// even when frames stop (a hidden tab); frames only carry the motor's speed.
 
-import { ensureAudio } from "../../engine/audio";
+import { createOutput, ensureAudio, tanhCurve, type Output } from "../../engine/audio";
 import { onFrame } from "../../engine/loop";
 import { BULB, DISC, DUTY, amplitudes, motorStep, keyPick, light, ringWave, ringsOf, targetRpm, tune, type Pos, type Reading, type Ring } from "./model";
 
@@ -26,8 +28,11 @@ export class FanRig {
   private S = 0;
   private ac: AudioContext | null = null;
   private bus: AudioNode | null = null;
+  private out: Output | null = null;
   private chain: AudioNode[] = [];
-  private voices: { osc: OscillatorNode; g: GainNode }[] = [];
+  /** the disc's turns per second, which every ring's pitch is a multiple of, so the rings stay locked together */
+  private rps: ConstantSourceNode | null = null;
+  private voices: { osc: OscillatorNode; holes: GainNode; g: GainNode }[] = [];
   private lastKey = "";
   private sinceReport = 0;
   private cleanup: (() => void)[] = [];
@@ -50,6 +55,7 @@ export class FanRig {
       this.keys = [];
       this.buildVoices();
     }
+    this.sound();   // the bulb may have gone off
   }
 
   /** call inside a gesture: starts audio the first time */
@@ -60,38 +66,48 @@ export class FanRig {
     // the photocell output is AC-coupled into a small amp
     const hp = new BiquadFilterNode(ac, { type: "highpass", frequency: 28 });
     const lp = new BiquadFilterNode(ac, { type: "lowpass", frequency: 5000, Q: 0.5 });
-    const c = new Float32Array(1024);
-    for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; c[i] = Math.tanh(1.7 * x) / Math.tanh(1.7); }
-    const sh = new WaveShaperNode(ac, { curve: c });
-    const out = new GainNode(ac, { gain: 0.8 });
-    hp.connect(lp).connect(sh).connect(out).connect(ac.destination);
+    const sh = new WaveShaperNode(ac, { curve: tanhCurve(1.7), oversample: "2x" });
+    this.out = createOutput(ac, 0.8);
+    hp.connect(lp).connect(sh).connect(this.out.node);
     this.bus = hp;
-    this.chain = [hp, lp, sh, out];
+    this.chain = [hp, lp, sh];
+    this.rps = new ConstantSourceNode(ac, { offset: this.rpm / 60 });
+    this.rps.start();
     this.buildVoices();
   }
 
   private stopVoices() {
-    for (const v of this.voices) { try { v.osc.stop(); } catch { /* already stopped */ } v.osc.disconnect(); v.g.disconnect(); }
+    for (const v of this.voices) { try { v.osc.stop(); } catch { /* already stopped */ } v.osc.disconnect(); v.holes.disconnect(); v.g.disconnect(); }
     this.voices = [];
   }
   private buildVoices() {
-    const ac = this.ac, bus = this.bus;
-    if (!ac || !bus) return;
+    const ac = this.ac, bus = this.bus, rps = this.rps;
+    if (!ac || !bus || !rps) return;
     this.stopVoices();
     this.voices = this.rings.map((g) => {
       const w = ringWave(g);
-      const osc = new OscillatorNode(ac, { frequency: g.N * this.rpm / 60 });
+      // each ring plays its holes × the disc's turns per second
+      const osc = new OscillatorNode(ac, { frequency: 0 }), holes = new GainNode(ac, { gain: g.N });
+      rps.connect(holes).connect(osc.frequency);
       osc.setPeriodicWave(ac.createPeriodicWave(w.re, w.im));
       const gn = new GainNode(ac, { gain: 0 });
       osc.connect(gn).connect(bus); osc.start();
-      return { osc, g: gn };
+      return { osc, holes, g: gn };
     });
+    this.sound();
+  }
+
+  /** what the photocell hears: called whenever the pick, a key or the bulb changes */
+  private sound() {
+    if (!this.ac || !this.voices.length) return;
+    const t = this.ac.currentTime, amps = amplitudes(this.rings, this.contacts(), this.s.bulb);
+    this.voices.forEach((v, i) => v.g.gain.setTargetAtTime(amps[i] * 0.3, t, 0.012));
   }
 
   // ---------- the pick ----------
-  keyDown(i: number) { if (i < this.rings.length) { this.wake(); this.keyUp(i); this.keys.push(i); } }
-  keyUp(i: number) { this.keys = this.keys.filter((k) => k !== i); }
-  releaseAll() { this.keys = []; this.finger = null; this.cv.classList.remove("down"); }
+  keyDown(i: number) { if (i < this.rings.length) { this.wake(); this.keys = this.keys.filter((k) => k !== i); this.keys.push(i); this.sound(); } }
+  keyUp(i: number) { this.keys = this.keys.filter((k) => k !== i); this.sound(); }
+  releaseAll() { this.keys = []; this.finger = null; this.cv.classList.remove("down"); this.sound(); }
 
   /** the pick touches the disc while a finger or the mouse holds it, or while a ring key is held (last key wins) */
   private contacts(): Pos[] {
@@ -115,9 +131,10 @@ export class FanRig {
       this.wake();
       try { cv.setPointerCapture(e.pointerId); } catch { /* fine without capture */ }
       this.finger = e.pointerId; this.pick = toDisc(e); cv.classList.add("down");
+      this.sound();
     };
-    const move = (e: PointerEvent) => { if (e.pointerId === this.finger) { this.pick = toDisc(e); e.preventDefault(); } };
-    const up = (e: PointerEvent) => { if (e.pointerId === this.finger) { this.finger = null; cv.classList.remove("down"); } };
+    const move = (e: PointerEvent) => { if (e.pointerId === this.finger) { this.pick = toDisc(e); e.preventDefault(); this.sound(); } };
+    const up = (e: PointerEvent) => { if (e.pointerId === this.finger) { this.finger = null; cv.classList.remove("down"); this.sound(); } };
     const menu = (e: Event) => e.preventDefault();
     const blur = () => this.releaseAll();
     const hidden = () => { if (document.hidden) this.releaseAll(); };
@@ -142,13 +159,7 @@ export class FanRig {
     this.rpm = motorStep(this.rpm, targetRpm(this.s.base, this.s.speed, this.s.bend), dt);
     this.angle = (this.angle + this.rpm / 60 * Math.PI * 2 * dt) % (Math.PI * 2);
     const amps = amplitudes(this.rings, this.contacts(), this.s.bulb);
-    if (this.ac && this.voices.length) {
-      const t = this.ac.currentTime;
-      this.voices.forEach((v, i) => {
-        v.osc.frequency.setTargetAtTime(this.rings[i].N * this.rpm / 60, t, 0.02);
-        v.g.gain.setTargetAtTime(amps[i] * 0.3, t, 0.012);
-      });
-    }
+    if (this.ac && this.rps) this.rps.offset.setTargetAtTime(this.rpm / 60, this.ac.currentTime, 0.02);
     if (Math.round(this.cv.clientWidth * this.dpr) !== this.S) this.resize();   // follow layout changes (rotation, split view)
     if (this.S >= 40) this.draw();
     this.report(amps, dt);
@@ -377,9 +388,14 @@ export class FanRig {
   dispose() {
     this.cleanup.forEach((f) => f());
     this.cleanup = [];
-    this.stopVoices();
-    for (const n of this.chain) n.disconnect();
-    this.chain = []; this.bus = null;
     this.releaseAll();
+    // fade out before taking the voices apart, so leaving mid-note doesn't click
+    const voices = this.voices, chain = this.chain, rps = this.rps;
+    this.out?.dispose(() => {
+      this.voices = voices; this.stopVoices();
+      for (const n of chain) n.disconnect();
+      if (rps) { rps.stop(); rps.disconnect(); }
+    });
+    this.voices = []; this.chain = []; this.bus = null; this.rps = null; this.out = null;
   }
 }
