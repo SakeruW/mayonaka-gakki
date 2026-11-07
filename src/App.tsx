@@ -5,9 +5,9 @@ import CrtDrums from "./instruments/crt-drums/CrtDrums";
 import OpenReel from "./instruments/open-reel/OpenReel";
 
 const TITLES: Record<Route, string> = {
-  "fan-harp": "真夜中扇風琴",
-  "crt-drums": "真夜中ブラウン管",
-  "open-reel": "真夜中オープンリール",
+  "fan-harp": "未来の扇風琴",
+  "crt-drums": "未来のブラウン管",
+  "open-reel": "未来のオープンリール",
 };
 
 const NAV: Route[] = ["fan-harp", "crt-drums", "open-reel"];

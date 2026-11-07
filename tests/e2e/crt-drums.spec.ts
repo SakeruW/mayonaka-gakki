@@ -18,8 +18,8 @@ test("all six screens power on", async ({ page }) => {
 test("screens come back after leaving and re-entering", async ({ page }) => {
   const errors = collectErrors(page);
   for (let i = 0; i < 3; i++) {
-    await page.getByRole("link", { name: "真夜中扇風琴" }).click();
-    await page.getByRole("link", { name: "真夜中ブラウン管" }).click();
+    await page.getByRole("link", { name: "未来の扇風琴" }).click();
+    await page.getByRole("link", { name: "未来のブラウン管" }).click();
   }
   await page.waitForTimeout(1600);
   expect(await brightness(page, page.locator(".crt-drums .screen").last())).toBeGreaterThan(0.06);
