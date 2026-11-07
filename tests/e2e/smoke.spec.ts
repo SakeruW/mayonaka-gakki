@@ -48,3 +48,13 @@ test("the icons are linked and served", async ({ page, request }) => {
     expect(res.headers()["content-type"], path).toContain(type);
   }
 });
+
+test("the share card is linked and served", async ({ page, request }) => {
+  await page.goto("/");
+  await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
+  const image = await page.locator('meta[property="og:image"]').getAttribute("content");
+  expect(image).toBe("https://gakki.sakeru.dev/og.png");   // absolute, as crawlers need; served from this build below
+  const res = await request.get("/og.png");
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toContain("image/png");
+});
